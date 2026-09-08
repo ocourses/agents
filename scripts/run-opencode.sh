@@ -30,6 +30,7 @@ echo "Rôle : $ROLE_FILE"
 # --- fichiers de run non suivis (au cas où le .gitignore du dépôt ne les couvre pas) ---
 mkdir -p _agent_logs
 printf '%s\n' AGENTS.md opencode.json .opencode/ _agent_logs/ _agents/ \
+  '**/build/' '*.synctex.gz' \
   >> .git/info/exclude
 
 # --- install OpenCode (épinglé) ---

@@ -40,6 +40,9 @@ Ne touche pas aux autres fichiers `.agents/` (autres runs).
   (`feat`, `fix`, `refactor`, `style`, `docs`, `test`, `chore`).
 - Jamais de `git push` ni `git rebase` ni `--force` : l'orchestration pousse.
 - Ne commite pas `AGENTS.md`, `opencode.json`, `_agent_logs/` (ils sont ignorés).
+- Ne commite **aucun artefact de compilation** (`*.pdf`, `*.aux`, `build/`…),
+  **même s'il est déjà suivi** dans le dépôt : `latex-compile` sert à vérifier,
+  pas à produire un livrable. `git add` tes sources, pas `git add -A` aveugle.
 
 ## Méthode
 
