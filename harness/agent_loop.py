@@ -282,25 +282,51 @@ def build_system(role_text: str, ctx: dict, guides: str = "") -> str:
     )
 
 
-ACTION_RE = re.compile(r"```(?:action|json)?\s*(\{.*?\})\s*```", re.DOTALL)
+FENCE_RE = re.compile(r"```(?:action|json)?\s*\n?(.*?)\n?```", re.DOTALL)
+
+
+def _first_json_object(s: str) -> str | None:
+    """Extrait le premier objet JSON équilibré (gère les accolades imbriquées
+    et les accolades dans les chaînes — le contenu LaTeX en est plein)."""
+    start = s.find("{")
+    if start < 0:
+        return None
+    depth, in_str, esc = 0, False, False
+    for i in range(start, len(s)):
+        c = s[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+        elif c == '"':
+            in_str = True
+        elif c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return s[start:i + 1]
+    return None
 
 
 def parse_action(text: str) -> dict | None:
-    m = ACTION_RE.search(text)
-    blob = m.group(1) if m else None
-    if blob is None:
-        stripped = text.strip()
-        if stripped.startswith("{") and stripped.endswith("}"):
-            blob = stripped
+    m = FENCE_RE.search(text)
+    candidate = m.group(1) if m else text
+    blob = _first_json_object(candidate) or _first_json_object(text)
     if blob is None:
         return None
     try:
         obj = json.loads(blob)
     except json.JSONDecodeError:
         return None
-    if "tool" not in obj:
+    if not isinstance(obj, dict) or "tool" not in obj:
         return None
     obj.setdefault("args", {})
+    if not isinstance(obj["args"], dict):
+        return None
     return obj
 
 
@@ -309,6 +335,8 @@ def run(args: argparse.Namespace) -> int:
     if not api_key:
         raise AgentError("ALBERT_API_KEY manquant")
     base = os.environ.get("ALBERT_BASE", DEFAULT_BASE)
+    if args.protocol == "tools":
+        print("::warning::protocol=tools non implémenté, repli sur react")
 
     repo = Path(args.repo).resolve()
     role_text = Path(args.role).read_text("utf-8")
@@ -405,6 +433,9 @@ def main() -> int:
     p.add_argument("--log-dir", default="_agent_logs")
     p.add_argument("--guides-dir", default=None,
                    help="répertoire des guides (déclarés dans le rôle)")
+    p.add_argument("--protocol", choices=("react", "tools"), default="react",
+                   help="'tools' (function calling) pas encore implémenté : "
+                        "repli automatique sur 'react'")
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
     try:
