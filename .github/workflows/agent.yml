@@ -103,11 +103,18 @@ jobs:
         run: |
           set -euo pipefail
           test -f .gitmodules || { echo "pas de sous-module"; exit 0; }
-          git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "git@github.com:"
-          git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "https://github.com/"
-          git submodule sync --recursive
-          git -c protocol.version=2 submodule update --init --depth 1 --recursive
-          git config --global --unset-all url."https://x-access-token:${TOKEN}@github.com/".insteadOf || true
+          # Réécrit chaque URL de sous-module en HTTPS + PAT directement dans
+          # .git/config (submodule.<nom>.url), sans 'git submodule sync' qui
+          # réécraserait avec l'URL brute (SSH) de .gitmodules.
+          git config -f .gitmodules --get-regexp '^submodule\..*\.url$' \
+          | while read -r key url; do
+              name="${key#submodule.}"; name="${name%.url}"
+              path=$(git config -f .gitmodules --get "submodule.${name}.path")
+              https=$(printf '%s\n' "$url" | sed -E 's#^(git@github\.com:|https://github\.com/)#https://github.com/#')
+              auth=$(printf '%s\n' "$https" | sed -E "s#^https://github\.com/#https://x-access-token:${TOKEN}@github.com/#")
+              git -c "submodule.${name}.url=${auth}" submodule update --init --depth 1 "$path"
+              git config "submodule.${name}.url" "$https"   # retire le token
+            done
 
       - name: Vérifier le rôle
         env:
