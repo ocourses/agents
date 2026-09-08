@@ -73,13 +73,13 @@ jobs:
     name: "Agent · ${{ inputs.role }}"
     runs-on: ubuntu-latest
     steps:
-      - name: Diagnostic secrets
+      - name: Vérifier les secrets
         env:
           ALBERT: ${{ secrets.ALBERT_API_KEY }}
           PAT: ${{ secrets.AGENTS_READ_TOKEN }}
         run: |
-          echo "ALBERT_API_KEY : ${#ALBERT} caractères"
-          echo "AGENTS_READ_TOKEN : ${#PAT} caractères"
+          test -n "$ALBERT" || { echo "::error::secret ALBERT_API_KEY absent ou vide (secret de dépôt requis)"; exit 1; }
+          test -n "$PAT"    || { echo "::error::secret AGENTS_READ_TOKEN absent ou vide (secret de dépôt requis)"; exit 1; }
 
       - name: Checkout du dépôt appelant
         uses: actions/checkout@v4
