@@ -73,6 +73,14 @@ jobs:
     name: "Agent · ${{ inputs.role }}"
     runs-on: ubuntu-latest
     steps:
+      - name: Diagnostic secrets
+        env:
+          ALBERT: ${{ secrets.ALBERT_API_KEY }}
+          PAT: ${{ secrets.AGENTS_READ_TOKEN }}
+        run: |
+          echo "ALBERT_API_KEY : ${#ALBERT} caractères"
+          echo "AGENTS_READ_TOKEN : ${#PAT} caractères"
+
       - name: Checkout du dépôt appelant
         uses: actions/checkout@v4
         with:
