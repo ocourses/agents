@@ -1,0 +1,39 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "albert": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Albert API (État 🇫🇷)",
+      "options": {
+        "baseURL": "https://albert.api.etalab.gouv.fr/v1",
+        "apiKey": "{env:ALBERT_API_KEY}"
+      },
+      "models": {
+        "deepseek-v4-flash": {
+          "name": "DeepSeek V4 Flash (Albert)",
+          "limit": { "context": 131072, "output": 65536 }
+        },
+        "openai/gpt-oss-120b": {
+          "name": "GPT-OSS 120B (Albert)",
+          "limit": { "context": 131072, "output": 32768 }
+        }
+      }
+    }
+  },
+  "model": "albert/deepseek-v4-flash",
+  "small_model": "albert/deepseek-v4-flash",
+  "permission": {
+    "edit": "allow",
+    "bash": {
+      "*": "allow",
+      "git push*": "deny",
+      "git remote*": "deny",
+      "gh auth*": "deny",
+      "gh secret*": "deny",
+      "sudo *": "deny",
+      "rm -rf /*": "deny"
+    },
+    "webfetch": "deny",
+    "websearch": "deny"
+  }
+}

@@ -1,45 +1,44 @@
 # `ocourses/agents` — base d'agents IA pour les cours
 
-Workflow GitHub Actions réutilisable qui fait travailler un agent IA (modèle
-**Albert**, API souveraine) sur un dépôt de cours, **sans jamais perdre son
-travail** : chaque run laisse une trace complète (issue, branche, fichier de
-suivi, plan d'action, commits, PR Draft, commentaire de bilan).
+Workflow GitHub Actions réutilisable qui fait travailler un agent IA sur un
+dépôt de cours, **sans jamais perdre son travail** : chaque run laisse une
+trace complète (issue, branche, fichier de suivi, commits, PR Draft,
+commentaire de bilan).
 
-## Principe : deux couches
+- **Mécanique figée** — l'orchestration (issue → branche → suivi → commit
+  *dummy* → PR Draft → travail → bilan) est en **scripts** (`bash` + `gh`),
+  déterministe.
+- **Liberté** — le travail lui-même est fait par **[OpenCode](https://opencode.ai)**
+  (le moteur), modèle **Albert** (`deepseek-v4-flash`), avec tous ses outils.
+- **Générique** — un rôle = un fichier Markdown, réutilisable pour n'importe
+  quelle tâche (migration LaTeX, corrigés, rédaction, relecture…).
 
-| Couche | Qui | Fait quoi |
-|--------|-----|-----------|
-| **A — orchestration** | `scripts/*.sh` + `gh`, 100 % déterministe | issue → branche → suivi → commit dummy → PR Draft → … → maj suivi → commentaire de bilan |
-| **B — agent** | `harness/agent_loop.py` + un rôle | phase *plan* (exploration + plan d'action) puis phase *travail* (édition + commits) |
-
-Le **rôle** d'un agent est un simple fichier Markdown (`roles/<nom>.md`) qui sert
-de *system prompt*. Ajouter un agent = ajouter un fichier.
+Voir [`ARCHITECTURE.md`](ARCHITECTURE.md) pour le détail et l'historique des
+décisions.
 
 ## Séquence d'un run
 
-1. Ouvre une **issue** (rôle + tâche), assignée à `ocots`.
-2. Crée la **branche** `agent/<slug>-<run_id>`.
-3. Écrit le **fichier de suivi** `.agents/runs/<slug>-<run_id>.md` (nom unique →
-   runs parallèles sans conflit), le commite (*commit dummy*), le pousse.
-4. Ouvre une **PR Draft**, assignée à `ocots`, liée à l'issue.
-5. **Phase plan** : l'agent explore le dépôt (commandes en lecture seule) et
-   écrit `.agents/plans/<slug>-<run_id>.md`. Commit + push. Suivi mis à jour.
-6. **Phase travail** : l'agent implémente le plan, **commits réguliers**.
-7. **Clôture** : suivi mis à jour, **commentaire de bilan** sur la PR.
-   La PR **reste en Draft** — relecture humaine avant « Ready ».
+1. `scaffold.sh` — issue (assignée `ocots`, label `agent`), branche
+   `agent/<slug>-<run_id>`, fichier de suivi `.agents/runs/<slug>-<run_id>.md`
+   (commit *dummy*), PR **Draft** (assignée `ocots`, « Closes #issue »).
+2. `run-opencode.sh` — assemble `AGENTS.md` (socle + rôle + contexte) et
+   `opencode.json`, lance `opencode run --auto`. OpenCode écrit son plan et son
+   journal dans le fichier de suivi, édite, **commite lui-même** (Conventional
+   Commits).
+3. `finalize.sh` — met le suivi à jour, pousse, poste la section `## Bilan` du
+   suivi en **commentaire de PR**. La PR **reste en Draft** (relecture humaine).
 
-En cas d'échec, l'état partiel est poussé et un commentaire signale l'interruption.
+En cas d'échec : l'état partiel est poussé, un commentaire signale l'interruption.
 
 ## Appeler l'agent depuis un dépôt de cours
 
-Un workflow minimal dans le dépôt de cours :
-
 ```yaml
-name: Agent — migration LaTeX
+name: Agent IA
 on:
   workflow_dispatch:
     inputs:
-      target: { description: "Fichier .tex à migrer", required: true }
+      role: { required: true, type: string }
+      task: { required: true, type: string }
 
 permissions:
   contents: write
@@ -50,86 +49,64 @@ jobs:
   run:
     uses: ocourses/agents/.github/workflows/agent.yml@main
     with:
-      role: latex-template-migrator
-      task: "Migrer ${{ inputs.target }} vers le template ocots, sans changer le fond."
-      title: "Migration ${{ inputs.target }}"
-    secrets: inherit
+      role: ${{ inputs.role }}
+      task: ${{ inputs.task }}
+    secrets:
+      ALBERT_API_KEY: ${{ secrets.ALBERT_API_KEY }}
+      AGENTS_READ_TOKEN: ${{ secrets.AGENTS_READ_TOKEN }}
 ```
 
-### Entrées du workflow réutilisable
+### Entrées
 
 | Entrée | Défaut | Rôle |
-|--------|--------|------|
-| `role` | — | fichier sous `roles/` (sans `.md`) |
-| `task` | — | tâche confiée à l'agent |
+|---|---|---|
+| `role` | — | fichier `roles/<role>.md` (override `.agents/roles/<role>.md` prioritaire) |
+| `task` | — | la tâche |
 | `title` | le rôle | titre court des issue / PR |
-| `model` | `deepseek` | alias ou id Albert (voir `scripts/resolve-model.sh`) |
-| `protocol` | `react` | `react` (robuste) ou `tools` (function calling) |
-| `agents_ref` | `main` | ref de ce dépôt (rôle + harness) |
-| `base_branch` | branche par défaut | branche de base de la PR |
+| `model` | `deepseek-v4-flash` | id de modèle Albert |
+| `agents_ref` | `main` | ref de ce dépôt |
+| `base_branch` | branche par défaut | base de la PR |
 | `assignee` | `ocots` | login assigné aux issue / PR |
-| `max_steps` | `40` | pas max de l'agent par phase |
 
-### Secrets attendus (org `ocourses`)
+### Secrets (au niveau du **dépôt** appelant)
 
-| Secret | Usage |
-|--------|-------|
-| `ALBERT_API_KEY` | appels modèle |
-| `AGENTS_READ_TOKEN` | PAT lecture seule : sous-modules privés + checkout de ce dépôt |
+Sur plan GitHub Free, les secrets d'**organisation** n'atteignent pas les dépôts
+privés. Chaque dépôt de cours pose donc ses propres secrets :
 
-L'écriture (issue, PR, commits) passe par le `GITHUB_TOKEN` du dépôt appelant ;
-activer *Settings → Actions → « Allow GitHub Actions to create and approve pull
-requests »* au niveau de l'org.
+```bash
+gh secret set ALBERT_API_KEY    -R ocourses/<cours>   # clé Albert
+gh secret set AGENTS_READ_TOKEN -R ocourses/<cours>   # PAT fine-grained, Contents:Read
+                                                      # sur `agents` + le sous-module template
+```
+
+Réglages org (une fois) : *Actions → « Allow GitHub Actions to create and
+approve pull requests »* ; et sur ce dépôt, *Actions → Access →
+« Accessible from repositories in the organization »*.
 
 ## Modèles Albert
 
-`scripts/resolve-model.sh` mappe des alias vers les identifiants canoniques
-(à vérifier via `GET /v1/models`, le catalogue évolue) :
-
-| Alias | Identifiant | Note |
-|-------|-------------|------|
-| `deepseek` | `deepseek-v4-flash` | coding agentique, *tool calling*, contexte 131k — défaut |
-| `qwen-coder` | `qwen3-coder-30b-A3b-instruct` | spécialisé code |
-| `gpt-oss` | `openai/gpt-oss-120b` | généraliste, tâches complexes |
-| `gemma` | `gemma-4-31b-it` | généraliste |
-| `mistral-small` | `mistral-small-3-2-24b-instruct-2506` | tâches moyennes |
-| `ministral` | `ministral-3-8b-instruct-2512` | tâches simples |
+`GET /v1/models` fait foi (le catalogue bouge). Au 2026-09-08 :
+`deepseek-v4-flash` (défaut, coding agentique, 131k), `openai/gpt-oss-120b`
+(généraliste), `qwen3-coder-30b-A3b-instruct`, `gemma-4-31b-it`,
+`mistral-small-3-2-24b-instruct-2506`, `ministral-3-8b-instruct-2512`.
+Passe l'id exact en input `model`.
 
 ## Arborescence
 
 ```
-.github/workflows/agent.yml   workflow réutilisable (couches A + B)
-harness/agent_loop.py         boucle tool-use Albert (stdlib seule)
+.github/workflows/agent.yml   workflow réutilisable
 scripts/scaffold.sh           couche A — mise en place du chantier
+scripts/run-opencode.sh       couche B — assemble AGENTS.md + lance OpenCode
 scripts/finalize.sh           couche A — clôture (suivi + bilan)
-scripts/resolve-model.sh      alias de modèle → identifiant Albert
-roles/                        system prompts, un fichier par rôle
-guides/                       règles transverses injectées dans le prompt
+config/opencode.json          provider Albert, permissions
+config/AGENTS.base.md         socle commun injecté dans AGENTS.md
+roles/                        un fichier par rôle
 ```
-
-Un dépôt de cours peut **surcharger** un rôle en plaçant `.agents/roles/<nom>.md`
-chez lui.
-
-## Guides
-
-Règles transverses (rédaction, template) dans `guides/<nom>.md`. Un rôle déclare
-ceux qu'il veut par un commentaire en tête de son fichier :
-
-```markdown
-<!-- guides: template-ocots redaction-poly -->
-```
-
-Le harness concatène ces guides au *system prompt*. Guides fournis :
-
-| Guide | Contenu |
-|-------|---------|
-| `template-ocots` | préambule, environnements, exercices, migration v0 |
-| `redaction-poly` | règles de style (texte entre les boîtes, amorces, typo…), tirées de `calcul-differentiel-edo-enseignants` |
 
 ## Rôles fournis
 
 | Rôle | Mission |
-|------|---------|
+|---|---|
 | `latex-template-migrator` | passe un `.tex` au template `ocots`, sans toucher au fond |
 | `exercise-corrector` | rédige les corrigés d'un TD |
 | `course-author` | complète / rédige une section de poly |
@@ -137,13 +114,13 @@ Le harness concatène ces guides au *system prompt*. Guides fournis :
 
 ## Ajouter un rôle
 
-Créer `roles/<nom>.md` : mission, périmètre (ce qui est interdit), méthode par
-phase (plan / travail / bilan). C'est tout — le workflow le trouve par son nom.
+Créer `roles/<nom>.md` : Mission · Périmètre (interdits) · Cible/références ·
+Méthode · Diff idéal. Pas d'instructions sur les outils (OpenCode s'en charge),
+pas de scission plan/travail. Le workflow le trouve par son nom.
 
-## Limites connues
+## Maintenance
 
-- Le harness est volontairement minimal (un seul appel d'outil par tour). Pour
-  des tâches très longues, augmenter `max_steps` ou découper la tâche.
-- La vérification de compilation LaTeX lourde (TeX Live complet) est laissée aux
-  workflows de CI du dépôt de cours, pas au run d'agent.
-- Le fond mathématique produit par un modèle doit toujours être relu.
+- **OpenCode est épinglé** (`OPENCODE_VERSION` dans `scripts/run-opencode.sh`).
+  Bumper de temps en temps, tester via un run avant de merger.
+- Les identifiants de modèles Albert peuvent devenir périmés — vérifier
+  `GET /v1/models`.

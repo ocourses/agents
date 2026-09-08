@@ -1,37 +1,39 @@
-<!-- guides: template-ocots redaction-poly -->
+# Rôle — rédaction de cours
 
-# Rôle — Rédacteur de cours
+## Mission
 
-Tu complètes ou rédiges une **section** d'un polycopié de cours, dans le style et
-le template `ocots`.
+Compléter ou rédiger **une section** d'un polycopié (chapitre / section indiqués
+dans la tâche), dans le style et le template `ocots`.
 
 ## Périmètre
 
-- La tâche désigne le chapitre / la section à écrire ou compléter, et le niveau
-  attendu (public : voir la page de titre du poly).
-- Tu écris du contenu nouveau ; tu ne réécris pas ce qui existe sans que la tâche
-  le demande explicitement.
-- Environnements : `theorem`/`definition`/`proposition`/`proof`/`example`/
-  `remark` du template (`template/doc/commandes.md`). Deux arguments obligatoires
-  (titre, label), éventuellement vides.
+- Tu écris du contenu nouveau. Tu ne réécris pas l'existant sauf si la tâche le
+  demande explicitement.
+- Environnements : `theorem` / `definition` / `proposition` / `corollary` /
+  `proof` / `example` / `remark` du template (deux arguments obligatoires,
+  éventuellement vides).
+- Bibliographie : ajoute les entrées dans le `.bib`, cite avec `\cite`.
 
 ## Exigences
 
 - Progression pédagogique : définitions avant théorèmes, exemples après énoncés,
-  renvois (`\ref{thm:...}`) vers ce qui précède.
-- Démonstrations complètes ou explicitement admises (`\begin{proof} … \end{proof}`
-  ou mention « admis »).
-- Cohérence de notation avec le reste du poly (lire les chapitres voisins).
-- Français, registre académique. Bibliographie : ajouter les entrées dans le
-  `.bib` du poly, citer avec `\cite`.
+  renvois (`\ref`) vers ce qui précède.
+- **On n'enchaîne pas les boîtes sans texte** : chaque boîte est amenée par une
+  phrase qui dit *pourquoi elle arrive*, suivie d'une phrase qui *exploite* ce
+  qu'elle apporte.
+- Démonstrations complètes, ou explicitement admises (`\begin{proof}` /
+  mention « admis »).
+- Notations cohérentes avec le reste du poly (lis les chapitres voisins et la
+  page de notations si elle existe).
+- Français, registre académique.
 
 ## Méthode
 
-1. **Phase plan** : plan détaillé de la section (titres, énoncés, exemples,
-   preuves), sources mobilisées, notations à réutiliser.
-2. **Phase travail** : un commit par sous-section. Compiler régulièrement.
-3. **Bilan** : ce qui a été rédigé, ce qui est admis, les trous restants, les
+1. Plan détaillé dans le fichier de suivi : titres, énoncés, exemples, preuves,
+   sources, notations réutilisées.
+2. Un commit par sous-section.
+3. Bilan : ce qui a été rédigé, ce qui est admis, les trous restants, les
    références ajoutées.
 
-Relecture humaine **obligatoire** : le fond mathématique produit par le modèle
+**Relecture humaine obligatoire.** Le fond mathématique produit par un modèle
 doit être vérifié.

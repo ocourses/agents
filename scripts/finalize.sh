@@ -1,51 +1,57 @@
 #!/usr/bin/env bash
-# Couche A — clôture le chantier d'un agent APRÈS son travail :
-#   maj du fichier de suivi -> commit/push -> commentaire de bilan sur la PR.
+# Couche A — clôture le chantier APRÈS le travail d'OpenCode :
+#   maj du suivi -> push -> commentaire de bilan sur la PR.
 # La PR reste en Draft (relecture humaine).
 #
 # Entrées (variables d'environnement) :
-#   REPO, PR, TRACKING, SUMMARY, OUTCOME (success|failure)
+#   REPO, PR, BRANCH, TRACKING, OUTCOME (success|failure), RUN_ID, GH_TOKEN
 set -euo pipefail
 
-: "${REPO:?}" "${PR:?}" "${TRACKING:?}" "${SUMMARY:?}"
+: "${REPO:?}" "${PR:?}" "${BRANCH:?}" "${TRACKING:?}"
 OUTCOME="${OUTCOME:-success}"
-RUN_URL="https://github.com/${REPO}/actions/runs/${GITHUB_RUN_ID:-?}"
+RUN_URL="https://github.com/${REPO}/actions/runs/${RUN_ID:-?}"
 now="$(date -u +%FT%TZ)"
+tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 
 git config user.name  "ocourses-agent"
 git config user.email "agent@users.noreply.github.com"
 
-# --- fichier de suivi ---------------------------------------------------
+# --- maj du suivi + push de tout ce qui traîne ---
 if [ -f "$TRACKING" ]; then
   if [ "$OUTCOME" = "success" ]; then
-    sed -i.bak 's/- \[ \] Plan d.action rédigé/- [x] Plan d'\''action rédigé/' "$TRACKING" || true
-    sed -i.bak 's/- \[ \] Travail réalisé/- [x] Travail réalisé/' "$TRACKING" || true
-    sed -i.bak 's/- \[ \] Terminé/- [x] Terminé/' "$TRACKING" || true
-    printf '\n- %s — travail terminé (%s)\n' "$now" "$RUN_URL" >> "$TRACKING"
+    printf '\n- %s — run terminé (%s)\n' "$now" "$RUN_URL" >> "$TRACKING"
   else
-    printf '\n- %s — **interrompu** (%s) — voir le transcript\n' "$now" "$RUN_URL" >> "$TRACKING"
+    printf '\n- %s — **run interrompu** (%s) — bilan partiel\n' "$now" "$RUN_URL" >> "$TRACKING"
   fi
-  rm -f "${TRACKING}.bak"
-  git add "$TRACKING"
-  git commit -m "chore(agent): met à jour le suivi" || true
-  git push || true
+fi
+git add -A
+git commit -m "chore(agent): clôture du suivi" || echo "rien à committer"
+git push origin "HEAD:${BRANCH}" || true
+
+# --- bilan = section "## Bilan" du fichier de suivi ---
+if [ -f "$TRACKING" ]; then
+  awk '
+    /^##[[:space:]]+Bilan[[:space:]]*$/ { f=1; next }
+    /^##[[:space:]]/                    { f=0 }
+    f                                  { print }
+  ' "$TRACKING" | awk 'NF {p=1} p' > "$tmp/bilan.md"
 fi
 
-# --- commentaire de bilan sur la PR ----------------------------------
-if [ -f "$SUMMARY" ]; then
-  {
-    if [ "$OUTCOME" != "success" ]; then
-      echo "> ⚠️ Run interrompu avant la fin — bilan partiel."
-      echo
-    fi
-    cat "$SUMMARY"
+{
+  if [ "$OUTCOME" != "success" ]; then
+    echo "> ⚠️ Run interrompu avant la fin — bilan partiel."
     echo
-    echo "---"
-    echo "_Bilan produit par l'agent — run : ${RUN_URL}_"
-  } | gh pr comment "$PR" --repo "$REPO" --body-file -
-else
-  gh pr comment "$PR" --repo "$REPO" --body \
-    "L'agent n'a pas produit de bilan (outcome: $OUTCOME). Voir le run : $RUN_URL"
-fi
+  fi
+  if [ -s "$tmp/bilan.md" ] && ! grep -qi "À rédiger par l'agent" "$tmp/bilan.md"; then
+    cat "$tmp/bilan.md"
+  else
+    echo "_L'agent n'a pas produit de bilan._ Voir le suivi \`$TRACKING\` et les commits de la branche."
+  fi
+  echo
+  echo "---"
+  echo "_Run : ${RUN_URL} · suivi : \`${TRACKING}\`_"
+} > "$tmp/comment.md"
+
+gh pr comment "$PR" --repo "$REPO" --body-file "$tmp/comment.md"
 
 echo "Chantier clôturé (outcome: $OUTCOME) — PR #$PR laissée en Draft."
