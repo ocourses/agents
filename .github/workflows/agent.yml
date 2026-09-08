@@ -1,0 +1,221 @@
+name: AI Agent
+
+# Workflow RÉUTILISABLE de la base d'agents.
+#
+# Couche A (bash + gh, déterministe) : issue -> branche -> suivi -> commit dummy
+#   -> PR Draft -> ... -> maj suivi -> commentaire de bilan.
+# Couche B (harness/agent_loop.py) : phase « plan » puis phase « travail ».
+#
+# Le dépôt appelant fournit un job minimal :
+#
+#   permissions: { contents: write, issues: write, pull-requests: write }
+#   jobs:
+#     run:
+#       uses: ocourses/agents/.github/workflows/agent.yml@main
+#       with:  { role: latex-template-migrator, task: "..." }
+#       secrets: inherit
+
+on:
+  workflow_call:
+    inputs:
+      role:
+        description: "Nom du rôle sous roles/ (sans .md)"
+        required: true
+        type: string
+      task:
+        description: "Tâche confiée à l'agent"
+        required: true
+        type: string
+      title:
+        description: "Titre court pour l'issue / la PR (défaut : le rôle)"
+        required: false
+        type: string
+        default: ""
+      model:
+        description: "Alias ou identifiant de modèle Albert"
+        required: false
+        type: string
+        default: deepseek
+      protocol:
+        description: "Protocole d'outils : react (robuste) ou tools (function calling)"
+        required: false
+        type: string
+        default: react
+      agents_ref:
+        description: "Ref de ocourses/agents (rôle + harness)"
+        required: false
+        type: string
+        default: main
+      base_branch:
+        description: "Branche de base (défaut : branche par défaut du dépôt)"
+        required: false
+        type: string
+        default: ""
+      assignee:
+        description: "Login assigné aux issues / PR"
+        required: false
+        type: string
+        default: ocots
+      max_steps:
+        description: "Nombre maximum de pas de l'agent par phase"
+        required: false
+        type: number
+        default: 40
+    secrets:
+      ALBERT_API_KEY:
+        required: true
+      AGENTS_READ_TOKEN:
+        description: "PAT lecture seule : sous-modules privés + dépôt ocourses/agents"
+        required: true
+
+jobs:
+  agent:
+    name: "Agent · ${{ inputs.role }}"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout du dépôt appelant
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+          # token par défaut (GITHUB_TOKEN) : sert aux commits / push de l'agent.
+
+      - name: Checkout de la base d'agents
+        uses: actions/checkout@v4
+        with:
+          repository: ocourses/agents
+          ref: ${{ inputs.agents_ref }}
+          path: _agents
+          persist-credentials: false
+          token: ${{ secrets.AGENTS_READ_TOKEN }}
+
+      - name: Sous-modules privés (lecture via PAT)
+        env:
+          TOKEN: ${{ secrets.AGENTS_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -f .gitmodules || { echo "pas de sous-module"; exit 0; }
+          git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "git@github.com:"
+          git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "https://github.com/"
+          git submodule sync --recursive
+          git -c protocol.version=2 submodule update --init --depth 1 --recursive
+          git config --global --unset-all url."https://x-access-token:${TOKEN}@github.com/".insteadOf || true
+
+      - name: Vérifier le rôle
+        env:
+          ROLE: ${{ inputs.role }}
+        run: |
+          set -euo pipefail
+          case "$ROLE" in ""|*/*|*..*) echo "rôle invalide"; exit 1;; esac
+          test -f "_agents/roles/${ROLE}.md" \
+            || { echo "rôle inconnu : _agents/roles/${ROLE}.md"; exit 1; }
+
+      - name: Rôle effectif (override local éventuel)
+        id: role
+        env:
+          ROLE: ${{ inputs.role }}
+        run: |
+          set -euo pipefail
+          if [ -f ".agents/roles/${ROLE}.md" ]; then
+            echo "path=.agents/roles/${ROLE}.md" >> "$GITHUB_OUTPUT"
+          else
+            echo "path=_agents/roles/${ROLE}.md" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Résoudre le modèle
+        id: model
+        run: bash _agents/scripts/resolve-model.sh "${{ inputs.model }}" >> "$GITHUB_OUTPUT"
+
+      - name: Chantier (issue, branche, suivi, PR Draft)
+        id: scaffold
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ROLE: ${{ inputs.role }}
+          TASK: ${{ inputs.task }}
+          TITLE: ${{ inputs.title }}
+          ASSIGNEE: ${{ inputs.assignee }}
+          BASE_BRANCH: ${{ inputs.base_branch }}
+          RUN_ID: ${{ github.run_id }}
+          MODEL: ${{ steps.model.outputs.model }}
+          REPO: ${{ github.repository }}
+        run: bash _agents/scripts/scaffold.sh
+
+      - name: Phase — plan d'action
+        env:
+          ALBERT_API_KEY: ${{ secrets.ALBERT_API_KEY }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python3 _agents/harness/agent_loop.py \
+            --phase plan \
+            --repo "$PWD" \
+            --role "${{ steps.role.outputs.path }}" \
+            --task "${{ inputs.task }}" \
+            --run-id "${{ github.run_id }}" \
+            --branch "${{ steps.scaffold.outputs.branch }}" \
+            --plan "${{ steps.scaffold.outputs.plan }}" \
+            --summary "${{ steps.scaffold.outputs.summary }}" \
+            --model "${{ steps.model.outputs.model }}" \
+            --protocol "${{ inputs.protocol }}" \
+            --issue "${{ steps.scaffold.outputs.issue }}" \
+            --pr "${{ steps.scaffold.outputs.pr }}" \
+            --max-steps "${{ inputs.max_steps }}" \
+            --guides-dir _agents/guides \
+            --log-dir _agent_logs
+
+      - name: Commit du plan
+        env:
+          PLAN: ${{ steps.scaffold.outputs.plan }}
+          TRACKING: ${{ steps.scaffold.outputs.tracking }}
+          BRANCH: ${{ steps.scaffold.outputs.branch }}
+          ISSUE: ${{ steps.scaffold.outputs.issue }}
+        run: |
+          set -euo pipefail
+          git config user.name  "ocourses-agent"
+          git config user.email "agent@users.noreply.github.com"
+          sed -i.bak "s/- \[ \] Plan d.action rédigé/- [x] Plan d'action rédigé/" "$TRACKING" || true
+          rm -f "${TRACKING}.bak"
+          git add "$PLAN" "$TRACKING"
+          git commit -m "docs(agent): plan d'action (#${ISSUE})" || echo "rien à committer"
+          git push origin "HEAD:${BRANCH}"
+
+      - name: Phase — travail
+        env:
+          ALBERT_API_KEY: ${{ secrets.ALBERT_API_KEY }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python3 _agents/harness/agent_loop.py \
+            --phase work \
+            --repo "$PWD" \
+            --role "${{ steps.role.outputs.path }}" \
+            --task "${{ inputs.task }}" \
+            --run-id "${{ github.run_id }}" \
+            --branch "${{ steps.scaffold.outputs.branch }}" \
+            --plan "${{ steps.scaffold.outputs.plan }}" \
+            --summary "${{ steps.scaffold.outputs.summary }}" \
+            --model "${{ steps.model.outputs.model }}" \
+            --protocol "${{ inputs.protocol }}" \
+            --issue "${{ steps.scaffold.outputs.issue }}" \
+            --pr "${{ steps.scaffold.outputs.pr }}" \
+            --max-steps "${{ inputs.max_steps }}" \
+            --guides-dir _agents/guides \
+            --log-dir _agent_logs
+
+      - name: Clôture (suivi + commentaire de bilan)
+        if: always() && steps.scaffold.outputs.pr != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ steps.scaffold.outputs.pr }}
+          TRACKING: ${{ steps.scaffold.outputs.tracking }}
+          SUMMARY: ${{ steps.scaffold.outputs.summary }}
+          OUTCOME: ${{ job.status }}
+        run: bash _agents/scripts/finalize.sh
+
+      - name: Journaux de l'agent (artefact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-logs-${{ github.run_id }}
+          path: _agent_logs/
+          retention-days: 14
+          if-no-files-found: ignore
