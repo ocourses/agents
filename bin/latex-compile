@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Compile un ou plusieurs documents LaTeX dans le conteneur TeX Live — la MÊME
+# image que la CI (latex-pr.yml), pour que « ça compile ici » = « ça compilera
+# sur la PR ».
+#
+#   latex-compile <chemin/doc.tex> [autre.tex ...]
+#
+# Affiche les erreurs filtrées du log ; code de retour != 0 si un document
+# échoue. Cherche le .log dans le dossier du document ET dans son build/
+# (aux_dir courant des .latexmkrc du dépôt).
+set -u
+
+IMAGE="${TEXLIVE_IMAGE:-ghcr.io/xu-cheng/texlive-full:latest}"
+root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+[ "$#" -gt 0 ] || { echo "usage: latex-compile <doc.tex> [...]" >&2; exit 2; }
+
+rc=0
+for f in "$@"; do
+  path="$f"; [ -f "$path" ] || path="$root/$f"
+  if [ ! -f "$path" ]; then
+    echo "latex-compile: introuvable : $f" >&2; rc=1; continue
+  fi
+  rel="$(cd "$(dirname "$path")" && pwd)/$(basename "$path")"; rel="${rel#"$root"/}"
+  dir="$(dirname "$rel")"; base="$(basename "$rel")"; stem="${base%.tex}"
+
+  echo "── latex-compile: $rel"
+  if docker run --rm -v "$root":/w -w "/w/$dir" "$IMAGE" \
+       latexmk -pdf -interaction=nonstopmode -halt-on-error -file-line-error "$base" \
+       > "/tmp/latex-compile.$$" 2>&1
+  then
+    echo "   OK — $dir/$stem.pdf"
+  else
+    rc=1
+    echo "   ECHEC — premières erreurs :"
+    log=""
+    for c in "$root/$dir/build/$stem.log" "$root/$dir/$stem.log"; do
+      [ -f "$c" ] && { log="$c"; break; }
+    done
+    if [ -n "$log" ]; then
+      grep -nE ':[0-9]+:|^!|^l\.[0-9]+|Undefined control|Runaway|Missing|Not in outer|Emergency stop' \
+        "$log" | head -40 | sed 's/^/   /'
+    else
+      tail -40 "/tmp/latex-compile.$$" | sed 's/^/   /'
+    fi
+  fi
+  rm -f "/tmp/latex-compile.$$"
+done
+exit "$rc"

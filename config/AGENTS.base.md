@@ -49,6 +49,12 @@ Ne touche pas aux autres fichiers `.agents/` (autres runs).
   chose à corriger, note-le dans le bilan, ne le fais pas.
 - Vérifie ton travail à chaque lot (`git diff`, et une commande de test si elle
   existe).
+- **Compilation LaTeX** : tu disposes de `latex-compile <fichier.tex>` (TeX Live
+  conteneurisé, la même image que la CI). Tout document que tu migres ou écris
+  **doit compiler avant que tu rédiges le bilan**. Boucle :
+  modifier → `latex-compile` → lire l'erreur → corriger. Si une incompatibilité
+  de fond persiste après plusieurs essais, écris-la dans le bilan (fichier,
+  ligne, message exact) — ne la laisse jamais silencieuse.
 - « Existe-t-il plus simple / plus propre ? » avant tout changement non trivial.
 - Respecte le style du code/texte environnant ; ne reformate pas ce qui n'est
   pas concerné.

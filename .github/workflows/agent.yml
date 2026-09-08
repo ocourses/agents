@@ -112,6 +112,13 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Outil latex-compile (PATH + image TeX Live préchargée)
+        run: |
+          set -eu
+          chmod +x _agents/bin/* || true
+          echo "${GITHUB_WORKSPACE}/_agents/bin" >> "$GITHUB_PATH"
+          docker pull -q ghcr.io/xu-cheng/texlive-full:latest
+
       - name: Chantier (issue, branche, suivi, PR Draft)
         id: scaffold
         env:

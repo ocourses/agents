@@ -69,6 +69,19 @@ classe, préambule, noms d'environnements, macros.
   (`grep` dans `template/tex/math/`), garde une **définition locale minimale
   commentée** dans le préambule et **liste-la dans le bilan**. N'invente jamais
   une macro du template.
+- **`\fonction` du template** produit un `array` **nu** : il ne s'utilise qu'en
+  mode maths (`\[ \fonction{...} \]`). L'ancien `\fonction` de `tpN7`/`Jgbook`
+  s'auto-encadrait — si l'appel d'origine était hors maths, encadre-le, ou
+  garde la définition locale d'origine. **Compile pour trancher.**
+
+## Pièges connus (incompatibilités template)
+
+- `\begin{figure}` / `\begin{table}` **dans** un `exercise`/`question` → erreur
+  `Not in outer par mode` (ce sont des boîtes). Sors le flottant de la boîte, ou
+  passe-le en non-flottant (`\begin{center}…\captionof{figure}{…}`).
+- Un `\label`/`\ref` vers un flottant déplacé : vérifie qu'il pointe toujours.
+- `enumerate` de profondeur > `subquestion` : garde un `enumerate` nu à
+  l'intérieur, ce n'est pas une erreur.
 
 ## Méthode
 
@@ -80,8 +93,10 @@ classe, préambule, noms d'environnements, macros.
 3. Commits par lot : préambule + en-tête du fichier pilote ; puis **un commit
    par fichier `\input`é** (ou par chapitre).
 4. Vérifie à chaque lot que `git diff` ne montre que forme + renommage.
-5. Si la CI ne compile pas encore le document, dis-le dans le bilan avec la
-   première erreur du log (l'artefact PDF/log est joint au run de compilation).
+5. **`latex-compile <cible>` après chaque lot** : le document doit compiler
+   avant le bilan. Boucle compiler → lire l'erreur → corriger. Le bilan ne
+   dit « migré » que si `latex-compile` passe ; sinon il détaille l'erreur
+   résiduelle (fichier, ligne, message) et ce que tu as essayé.
 
 ## Diff idéal
 
