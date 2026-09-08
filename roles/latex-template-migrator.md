@@ -90,13 +90,19 @@ classe, préambule, noms d'environnements, macros.
    sans équivalent.
 2. Lis `template/examples/td/main.tex` (ou `poly/`) en entier ; consulte
    `template/doc/commandes.md` par `grep`/`sed` ciblés, pas en entier.
-3. Commits par lot : préambule + en-tête du fichier pilote ; puis **un commit
-   par fichier `\input`é** (ou par chapitre).
-4. Vérifie à chaque lot que `git diff` ne montre que forme + renommage.
-5. **`latex-compile <cible>` après chaque lot** : le document doit compiler
-   avant le bilan. Boucle compiler → lire l'erreur → corriger. Le bilan ne
-   dit « migré » que si `latex-compile` passe ; sinon il détaille l'erreur
-   résiduelle (fichier, ligne, message) et ce que tu as essayé.
+3. **Un fichier à la fois, commité avant de passer au suivant.** Ordre :
+   préambule + en-tête du pilote → `git add <pilote>` + commit ; puis chaque
+   fichier `\input`é → `git add <ce fichier>` + commit. **Ne garde jamais
+   plusieurs fichiers non commités en parallèle** : sur un poly de plusieurs
+   centaines de lignes, c'est la seule façon de ne pas perdre le travail si le
+   run est coupé (rate-limit, timeout).
+4. Vérifie à chaque commit que `git diff --staged` ne montre que forme +
+   renommage.
+5. **`latex-compile <pilote>` à la fin** (et quand utile en cours de route) :
+   le document doit compiler avant le bilan. Boucle compiler → lire l'erreur →
+   corriger. Le bilan ne dit « migré » que si `latex-compile` passe ; sinon il
+   détaille l'erreur résiduelle (fichier, ligne, message) et ce que tu as
+   essayé.
 
 ## Diff idéal
 
