@@ -28,9 +28,12 @@ import urllib.request
 from pathlib import Path
 
 DEFAULT_BASE = "https://albert.api.etalab.gouv.fr/v1"
-READ_TRUNCATE = 16_000
-BASH_TRUNCATE = 8_000
+READ_TRUNCATE = 6_000
+BASH_TRUNCATE = 4_000
 BASH_TIMEOUT = 300
+# Fenêtre glissante : nb de messages récents gardés en entier (le reste est
+# résumé). ~2 messages par échange → HISTORY_KEEP=10 ≈ 5 échanges.
+HISTORY_KEEP = 10
 
 # Chemins interdits en écriture (relatifs à la racine du dépôt).
 WRITE_DENY = (".git", ".github/workflows", "template")
@@ -52,12 +55,29 @@ class AgentError(RuntimeError):
 # --------------------------------------------------------------------------- API
 
 
+def trim_history(messages: list[dict]) -> list[dict]:
+    """Fenêtre glissante : system + 1er message utilisateur + N derniers
+    messages ; les messages du milieu sont remplacés par un marqueur court.
+    Réduit fortement les tokens d'entrée envoyés à chaque pas."""
+    if len(messages) <= HISTORY_KEEP + 2:
+        return messages
+    middle = len(messages) - 2 - HISTORY_KEEP
+    return (
+        messages[:2]
+        + [{"role": "user", "content": f"[… {middle} messages antérieurs élidés "
+            f"pour économiser des tokens — l'état actuel est dans les fichiers "
+            f"du dépôt, relis-les si besoin …]"}]
+        + messages[-HISTORY_KEEP:]
+    )
+
+
 def call_model(base: str, api_key: str, model: str, messages: list[dict],
                timeout: int = 180) -> str:
-    """Un appel /chat/completions, renvoie le texte de la réponse."""
+    """Un appel /chat/completions, renvoie le texte de la réponse.
+    Gère le 429 (limite de tokens/minute d'Albert) en attendant la fenêtre."""
     payload = json.dumps({
         "model": model,
-        "messages": messages,
+        "messages": trim_history(messages),
         "temperature": 0.2,
     }).encode("utf-8")
     req = urllib.request.Request(
@@ -69,20 +89,31 @@ def call_model(base: str, api_key: str, model: str, messages: list[dict],
             "Content-Type": "application/json",
         },
     )
-    for attempt in range(4):
+    max_attempts = 10
+    for attempt in range(max_attempts):
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 body = json.load(resp)
             return body["choices"][0]["message"]["content"] or ""
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", "replace")[:500]
-            if exc.code in (429, 500, 502, 503, 504) and attempt < 3:
-                time.sleep(2 ** attempt * 3)
+            last = attempt == max_attempts - 1
+            if exc.code == 429 and not last:
+                hdr = exc.headers.get("Retry-After", "")
+                wait = int(hdr) if hdr.isdigit() else 62
+                wait = min(max(wait, 5), 65)
+                print(f"::warning::429 Albert (tokens/min), pause {wait}s "
+                      f"[essai {attempt + 1}/{max_attempts}] {detail[:120]}",
+                      flush=True)
+                time.sleep(wait)
+                continue
+            if exc.code in (500, 502, 503, 504) and not last:
+                time.sleep(min(2 ** attempt * 2, 30))
                 continue
             raise AgentError(f"HTTP {exc.code} d'Albert : {detail}") from exc
         except (urllib.error.URLError, TimeoutError) as exc:
-            if attempt < 3:
-                time.sleep(2 ** attempt * 3)
+            if attempt < max_attempts - 1:
+                time.sleep(min(2 ** attempt * 2, 30))
                 continue
             raise AgentError(f"Albert injoignable : {exc}") from exc
     raise AgentError("Albert : échec après plusieurs tentatives")

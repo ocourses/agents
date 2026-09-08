@@ -68,6 +68,12 @@ on:
         description: "PAT lecture seule : sous-modules privés + dépôt ocourses/agents"
         required: true
 
+# Un seul agent à la fois par dépôt appelant : ils partagent le budget de
+# tokens/minute d'Albert. Les runs surnuméraires attendent (pas d'annulation).
+concurrency:
+  group: agent-albert-${{ github.repository }}
+  cancel-in-progress: false
+
 jobs:
   agent:
     name: "Agent · ${{ inputs.role }}"
