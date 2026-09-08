@@ -107,7 +107,7 @@ roles/                        un fichier par rôle
 
 | Rôle | Mission |
 |---|---|
-| `latex-template-migrator` | passe un `.tex` au template `ocots`, sans toucher au fond |
+| `latex-template-migrator` | passe un document `.tex` (et ses `\input`) au template `ocots`, sans toucher au fond |
 | `exercise-corrector` | rédige les corrigés d'un TD |
 | `course-author` | complète / rédige une section de poly |
 | `reviewer` | relit et produit un rapport, sans réécrire |

@@ -2,18 +2,26 @@
 
 ## Mission
 
-Faire passer **le fichier `.tex` indiqué dans la tâche** (et lui seul) au
-template `ocots`, **sans rien changer au fond** : énoncés, formules, valeurs
-numériques, ordre des questions restent identiques caractère pour caractère. Tu
-changes la **forme** — classe, préambule, noms d'environnements, macros.
+Faire passer **le document `.tex` indiqué dans la tâche** au template `ocots`,
+**sans rien changer au fond** : énoncés, formules, valeurs numériques, ordre des
+questions restent identiques caractère pour caractère. Tu changes la **forme** —
+classe, préambule, noms d'environnements, macros.
 
 ## Périmètre
 
-- Un seul fichier `.tex`, plus si besoin son `.latexmkrc` (à créer s'il n'existe
-  pas, sur le modèle de `td/td1/.latexmkrc`, pour que la CI puisse compiler).
-- **Interdit** : toucher au texte, aux maths, à un autre fichier du cours, au
-  sous-module `template/` (lecture seule), aux corrigés (`sol_*.tex`) sauf si la
-  tâche les désigne.
+- Le fichier cible, **et — s'il porte `\documentclass` — tous les fichiers qu'il
+  tire via `\input` / `\include`, récursivement**. Ils partagent le préambule :
+  migrer le fichier pilote seul laisse le document non compilable, ce qui n'est
+  pas un livrable acceptable. Suis la chaîne des `\input` depuis le fichier
+  pilote et migre chaque fichier atteint (renommage des environnements, macros).
+  Un `\input` de fichier généré / hors dépôt (absent du checkout) : signale-le
+  dans le bilan, ne l'invente pas.
+- Plus, si besoin, le `.latexmkrc` du dossier du fichier pilote (à créer s'il
+  n'existe pas, sur le modèle de `td/td1/.latexmkrc`, pour que la CI compile).
+- **Interdit** : toucher au texte, aux maths, à un fichier du cours **hors de la
+  chaîne d'`\input` du document cible**, au sous-module `template/` (lecture
+  seule). Les corrigés (`sol_*.tex`) : seulement s'ils sont `\input`és par la
+  cible ou désignés par la tâche.
 - Ne modifie pas non plus la mise en forme du texte (`{\bf ...}`, ponctuation…)
   sauf incompatibilité réelle avec le template.
 
@@ -22,7 +30,7 @@ changes la **forme** — classe, préambule, noms d'environnements, macros.
 | Support | Classe + paquet |
 |---|---|
 | TD | `\documentclass[11pt]{ocots-td}` + `\usepackage[lang=fr, theme=ocots, solutions=none, math={analysis,control}, institution={n7}]{ocots}` |
-| Poly | `\documentclass[11pt,twoside]{ocots-book}` + `\usepackage[lang=fr, theme=ocots, solutions=end, math={analysis,control}]{ocots}` |
+| Poly | `\documentclass[11pt,twoside]{ocots-book}` + `\usepackage[lang=fr, theme=ocots, solutions=end, math={analysis,control}, institution={n7}]{ocots}` |
 | Examen | `\documentclass[11pt]{ocots-exam}` + idem TD |
 
 - Retire les `\usepackage` que le template fournit déjà (babel, inputenc,
@@ -64,15 +72,19 @@ changes la **forme** — classe, préambule, noms d'environnements, macros.
 
 ## Méthode
 
-1. Plan dans le fichier de suivi (préambule proposé, table de renommage,
-   macros sans équivalent).
+1. Plan dans le fichier de suivi : liste **la chaîne complète des `\input`**
+   depuis la cible, le préambule proposé, la table de renommage, les macros
+   sans équivalent.
 2. Lis `template/examples/td/main.tex` (ou `poly/`) en entier ; consulte
    `template/doc/commandes.md` par `grep`/`sed` ciblés, pas en entier.
-3. Commits par lot : préambule ; en-tête ; puis chaque exercice / chapitre.
-   Pour un poly multi-fichier, un commit par fichier `\input`é.
+3. Commits par lot : préambule + en-tête du fichier pilote ; puis **un commit
+   par fichier `\input`é** (ou par chapitre).
 4. Vérifie à chaque lot que `git diff` ne montre que forme + renommage.
+5. Si la CI ne compile pas encore le document, dis-le dans le bilan avec la
+   première erreur du log (l'artefact PDF/log est joint au run de compilation).
 
 ## Diff idéal
 
-Préambule remplacé, environnements renommés, `.latexmkrc` ajouté si besoin — et
-**tout le reste identique caractère pour caractère**.
+Préambule remplacé (fichier pilote), environnements renommés dans **tous** les
+fichiers de la chaîne d'`\input`, `.latexmkrc` ajouté si besoin — et **tout le
+reste identique caractère pour caractère**. Le document compile.
