@@ -21,7 +21,8 @@ SLUG="$(slugify "$TITLE")"
 BRANCH="agent/${SLUG}-${RUN_ID}"
 TRACKING=".agents/runs/${SLUG}-${RUN_ID}.md"
 PLAN=".agents/plans/${SLUG}-${RUN_ID}.md"
-SUMMARY=".agents/runs/${SLUG}-${RUN_ID}.summary.md"
+# Le bilan est transitoire (commentaire de PR) : hors de l'arbre suivi.
+SUMMARY="_agent_logs/${SLUG}-${RUN_ID}.summary.md"
 RUN_URL="https://github.com/${REPO}/actions/runs/${GITHUB_RUN_ID:-$RUN_ID}"
 
 # --- label (idempotent) ---------------------------------------------------

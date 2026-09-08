@@ -41,7 +41,7 @@ if [ -f "$SUMMARY" ]; then
     cat "$SUMMARY"
     echo
     echo "---"
-    echo "_Bilan produit par l'agent · run : $RUN_URL_"
+    echo "_Bilan produit par l'agent — run : ${RUN_URL}_"
   } | gh pr comment "$PR" --repo "$REPO" --body-file -
 else
   gh pr comment "$PR" --repo "$REPO" --body \
