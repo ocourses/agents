@@ -94,9 +94,14 @@ Closes #$ISSUE
 **Rôle :** \`$ROLE\`
 **Tâche :** $TASK
 
+---
+- 🔧 Run (job de l'agent) : $RUN_URL
+- 📋 Suivi (plan + journal + bilan) : \`$TRACKING\`
+- 🤖 Modèle : \`$MODEL\`
+
 PR ouverte en **Draft** par un agent (\`ocourses/agents\`). Le travail arrive en
-commits ; un commentaire de bilan sera ajouté à la fin. Le suivi complet (plan,
-journal, bilan) est dans \`$TRACKING\`. **Relecture humaine avant fusion.**
+commits ; un commentaire de bilan sera ajouté à la fin. **Relecture humaine avant
+fusion.**
 EOF
 PR_URL="$(gh pr create --repo "$REPO" --draft --base "$BASE_BRANCH" --head "$BRANCH" \
   --title "[agent] $TITLE" --body-file "$tmp/pr.md" --assignee "$ASSIGNEE")"
