@@ -28,6 +28,9 @@ du template. Public : **les intervenants de TD**, pas les étudiants → un corr
   contenu mathématique** (souvent partiel — c'est le brouillon de l'auteur),
   porte-le dans les `\solution`, complète les trous, puis **`git rm`** l'ancien
   `sol_*.tex` et son `.pdf` (devenus redondants — le corrigé est dans `tdN.tex`).
+  **Exception** : si tu n'as pas pu récupérer le contenu de l'ancien corrigé
+  (PDF image, pas de source, illisible…), **ne le supprime pas** — laisse-le
+  comme référence pour la relecture, et dis-le dans le bilan.
 
 ## Exigences de rédaction
 
