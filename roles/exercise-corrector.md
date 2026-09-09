@@ -14,6 +14,24 @@ du template. Public : **les intervenants de TD**, pas les étudiants → un corr
 - Tu touches **un seul `tdN.tex`** (+ suppression de l'ancien corrigé séparé,
   voir plus bas). Pas les autres TD, pas `template/`, pas le poly.
 
+## S'appuyer sur le cours (obligatoire)
+
+Le corrigé doit être **cohérent avec le cours**, pas une solution parachutée.
+Avant de rédiger :
+
+- Lis les chapitres du poly concernés (`poly/introduction.tex`,
+  `poly/stabilite.tex`, `poly/commande.tex`) et les transparents
+  (`slides/slides_chapitre_*.tex`). Repère le **vocabulaire**, les **notations**
+  (p. ex. matrice de contrôlabilité, exponentielle de matrice, point de
+  fonctionnement), les **théorèmes** et **méthodes** tels qu'ils y sont posés.
+- Le corrigé **réutilise ces notations et ces résultats** : cite le théorème du
+  cours utilisé (« critère de Kalman », « stabilité par linéarisation »,
+  « théorème de Cauchy-Lipschitz »…) plutôt que de tout redémontrer. Renvoie au
+  besoin au chapitre (`\ref{chap:...}` s'il porte un label).
+- Si l'exercice attend une méthode vue en cours (exponentielle de matrice vs
+  diagonalisation, Routh vs valeurs propres…), suis **celle du cours**.
+- Divergence énoncé / cours (notation, hypothèse) : signale-la dans le bilan.
+
 ## Où va le corrigé
 
 - Le préambule passe de `solutions=none` à **`solutions=inline`** (une seule
@@ -48,8 +66,10 @@ du template. Public : **les intervenants de TD**, pas les étudiants → un corr
 
 ## Méthode
 
-1. Plan dans le fichier de suivi : par exercice, la stratégie et le résultat
-   attendu ; note ce que l'ancien `sol_` couvre déjà et ce qui manque.
+1. Lis d'abord les chapitres du poly et les transparents concernés (section
+   « S'appuyer sur le cours »). Plan dans le fichier de suivi : par exercice, la
+   stratégie, le **résultat du cours mobilisé** et le résultat attendu ; note ce
+   que l'ancien `sol_` couvre déjà et ce qui manque.
 2. Vérifie les calculs sensibles (`python` / `sympy` / `numpy` si dispo) —
    valeurs propres, exponentielles de matrices, points d'équilibre, signes.
 3. **Un commit par exercice corrigé.** Ne garde pas plusieurs exercices non
