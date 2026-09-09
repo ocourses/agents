@@ -20,9 +20,15 @@ du template. Public : **les intervenants de TD**, pas les étudiants → un corr
   ligne change ; l'énoncé seul se retrouve avec `solutions=none`).
 - Dans **chaque `\begin{exercise} … \end{exercise}`** : après la dernière
   question, une ligne `\solution` puis le corrigé. `\solution` est un marqueur
-  unique par exercice — tout ce qui suit est la correction. Structure le corrigé
-  par numéro de question (`\begin{question}` … ou une liste), en suivant l'ordre
-  de l'énoncé.
+  unique par exercice — tout ce qui suit est la correction.
+- **Ne rouvre pas `\begin{question}` dans le `\solution`** : le compteur
+  `question` continue celui de l'énoncé (le corrigé de la Q1 s'afficherait
+  « 4 »). Structure le corrigé avec une **liste manuelle** qui reprend les
+  numéros de l'énoncé, p. ex.
+  `\begin{description}\item[1.] … \item[2.] …\end{description}`
+  (et `\item[a.]`, `\item[b.]` pour les sous-questions). Un renvoi ponctuel à
+  une question de l'énoncé : `\ref{…}` si elle porte un label, sinon cite le
+  numéro en clair.
 - Un exercice sans corrigé à fournir : `\begin{exercise}[nosolution]`.
 - **Ancien corrigé** : si `sol_TD*.tex` / `sol_td*.tex` existe, **récupère son
   contenu mathématique** (souvent partiel — c'est le brouillon de l'auteur),
