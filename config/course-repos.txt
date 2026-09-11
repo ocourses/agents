@@ -9,7 +9,4 @@
 
 ocourses/automatique-enseignants
 ocourses/mesure-integration-enseignants
-
-# ocourses/calcul-differentiel-edo-enseignants — a template/ + conventions/
-# et le détecteur (check.yml), mais pas encore agent.yml / ALBERT_API_KEY.
-# À décommenter une fois onboardé.
+ocourses/calcul-differentiel-edo-enseignants
