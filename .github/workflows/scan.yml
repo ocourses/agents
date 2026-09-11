@@ -1,0 +1,78 @@
+name: Scan — conformité template
+
+# Workflow RÉUTILISABLE : repère les documents .tex d'un dépôt de cours qui ne
+# sont pas (ou pas complètement) migrés vers le template `ocots`, et ouvre une
+# issue par document, label `template-migration`. Déterministe (grep sur
+# tex/ocots-compat.sty), aucun appel modèle, aucun budget Albert consommé.
+#
+# Ne déclenche rien d'autre : l'issue reste à traiter à la main (choisir la
+# cible, lancer le workflow de migration suggéré dans le corps de l'issue).
+#
+# Le dépôt appelant fournit un job minimal :
+#
+#   permissions: { contents: read, issues: write }
+#   jobs:
+#     run:
+#       uses: ocourses/agents/.github/workflows/scan.yml@main
+#       secrets:
+#         AGENTS_READ_TOKEN: ${{ secrets.AGENTS_READ_TOKEN }}
+
+on:
+  workflow_call:
+    inputs:
+      agents_ref:
+        description: "Ref de ocourses/agents"
+        required: false
+        type: string
+        default: main
+      dispatch_workflow:
+        description: "Nom du workflow de migration à suggérer dans les issues"
+        required: false
+        type: string
+        default: agent-migrate-latex.yml
+    secrets:
+      AGENTS_READ_TOKEN:
+        required: true
+
+jobs:
+  scan:
+    name: Scan de conformité
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout du dépôt appelant
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Checkout de la base d'agents
+        uses: actions/checkout@v4
+        with:
+          repository: ocourses/agents
+          ref: ${{ inputs.agents_ref }}
+          path: _agents
+          persist-credentials: false
+          token: ${{ secrets.AGENTS_READ_TOKEN }}
+
+      - name: Sous-modules privés (lecture via PAT)
+        env:
+          TOKEN: ${{ secrets.AGENTS_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -f .gitmodules || { echo "pas de sous-module"; exit 0; }
+          git config -f .gitmodules --get-regexp '^submodule\..*\.url$' \
+          | while read -r key url; do
+              name="${key#submodule.}"; name="${name%.url}"
+              path=$(git config -f .gitmodules --get "submodule.${name}.path")
+              auth=$(printf '%s\n' "$url" | sed -E "s#^(git@github\.com:|https://github\.com/)#https://x-access-token:${TOKEN}@github.com/#")
+              https=$(printf '%s\n' "$url" | sed -E 's#^git@github\.com:#https://github.com/#')
+              git -c "submodule.${name}.url=${auth}" submodule update --init --depth 1 "$path"
+              git config "submodule.${name}.url" "$https"
+            done
+
+      - name: Scan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DISPATCH_WORKFLOW: ${{ inputs.dispatch_workflow }}
+        run: bash _agents/scripts/scan-template-compliance.sh

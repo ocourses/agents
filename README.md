@@ -94,13 +94,60 @@ Passe l'id exact en input `model`.
 ## Arborescence
 
 ```
-.github/workflows/agent.yml   workflow réutilisable
+.github/workflows/agent.yml   workflow réutilisable (issue → PR → travail → bilan)
+.github/workflows/scan.yml    workflow réutilisable (détection, pas de modèle)
 scripts/scaffold.sh           couche A — mise en place du chantier
 scripts/run-opencode.sh       couche B — assemble AGENTS.md + lance OpenCode
 scripts/finalize.sh           couche A — clôture (suivi + bilan)
+scripts/scan-template-compliance.sh  détecteur — ouvre une issue par doc non conforme
 config/opencode.json          provider Albert, permissions
 config/AGENTS.base.md         socle commun injecté dans AGENTS.md
 roles/                        un fichier par rôle
+```
+
+## Détecter ce qui n'est pas (encore) migré
+
+`scan.yml` (workflow réutilisable) + `scripts/scan-template-compliance.sh` :
+scanne un dépôt de cours et ouvre une issue (label `template-migration`) par
+document `.tex` non conforme au template `ocots`. **Script déterministe, pas
+un agent** : un `grep`, aucun appel modèle, aucun budget Albert consommé —
+peut tourner sur un cron sans y penser.
+
+Deux statuts :
+
+| Statut | Détection |
+|---|---|
+| `MISSING` | pilote sans `\usepackage[...]{ocots}` — jamais migré |
+| `LEGACY` | pilote migré, mais lui ou sa chaîne `\input` utilise encore un nom de `template/tex/ocots-compat.sty` |
+
+La liste des noms « legacy » est **extraite de `ocots-compat.sty` à chaque
+run**, pas codée en dur : ce fichier maigrit au fil des migrations (chaque
+ligne supprimée = une migration terminée), le détecteur se resserre tout
+seul.
+
+Chaque issue contient le statut, les macros en cause, et la commande prête à
+lancer (`gh workflow run agent-migrate-latex.yml -f target=...`). **Ne
+déclenche rien automatiquement** — la migration reste un geste volontaire,
+un humain choisit quand et dans quel ordre.
+
+⚠️ Une ligne de `ocots-compat.sty` ne se supprime que quand **plus aucun
+document, dans aucun dépôt de cours**, n'utilise ce nom — pas seulement le
+dépôt qu'on vient de scanner. Le scan par dépôt ne suffit pas à trancher ça ;
+vérifier avec un `grep` cross-dépôts avant de toucher au fichier de compat.
+
+Appel depuis un dépôt de cours (cron + déclenchement manuel) :
+
+```yaml
+name: Scan — conformité template ocots
+on:
+  schedule: [{ cron: "0 6 * * 1" }]
+  workflow_dispatch: {}
+permissions: { contents: read, issues: write }
+jobs:
+  run:
+    uses: ocourses/agents/.github/workflows/scan.yml@main
+    secrets:
+      AGENTS_READ_TOKEN: ${{ secrets.AGENTS_READ_TOKEN }}
 ```
 
 ## Rôles fournis
