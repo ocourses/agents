@@ -16,6 +16,84 @@ commentaire de bilan).
 Voir [`ARCHITECTURE.md`](ARCHITECTURE.md) pour le détail et l'historique des
 décisions.
 
+## Les deux parcours, de bout en bout
+
+Vue d'ensemble avant le détail de chaque pièce (sections suivantes). Deux
+pipelines partagent la même colonne vertébrale — détection gratuite → file
+d'attente → agent Albert → verrou global — mais divergent sur ce que l'agent
+fait vraiment.
+
+### Migration
+
+```
+1. check.yml (cron ou manuel) → checkers/template-migration.sh — gratuit
+   · classe chaque pilote .tex : MISSING / LEGACY / conforme
+   → ouvre une issue "[migration] <fichier>", label template-migration
+
+2. queue.yml (cron, verrou agent-albert-global) → queue-next.sh
+   · prend la plus ancienne issue template-migration, tous dépôts confondus
+   · gh workflow run agent-migrate-latex.yml -f target=<fichier>
+   · attend la fin (tient le verrou pendant tout le run)
+
+3. agent-migrate-latex.yml → agent.yml (role: latex-template-migrator)
+   · scaffold.sh : nouvelle issue "[agent] Migration <fichier>", branche,
+     PR Draft "Closes #<cette issue>"
+   · run-opencode.sh : OpenCode + Albert migre, compile, commite
+   · finalize.sh : bilan en commentaire de PR, reste en Draft
+
+4. queue-next.sh reprend la main
+   · PR trouvée → ferme l'issue de détection (#1), succès
+   · sinon → label agent:failed sur l'issue de détection, pas de retentative
+
+5. Relecture humaine de la PR Draft (latex-pr.yml compile dès "Ready for
+   review"), merge quand ça va.
+```
+
+### Conventions
+
+Même colonne vertébrale, mais **le script ne décide jamais** — il ouvre un
+candidat, un agent tranche.
+
+```
+1. check.yml → checkers/conventions.sh — gratuit, enveloppe
+   conventions/bin/verifier
+   → ouvre/actualise un candidat "[conventions] <fichier>",
+     label conventions-candidate, corps marqué "⚠️ candidat brut, pas relu"
+   · plus aucune trouvaille brute au run suivant → ferme le candidat seul
+
+2. queue.yml — MÊME file, MÊME verrou que la migration
+   · fusionne migration + conventions, prend le plus ancien des deux
+     toutes catégories confondues
+   · gh workflow run agent-review-conventions.yml
+       -f target=<fichier> -f issue=<numéro du candidat>
+
+3. agent-review-conventions.yml → agent.yml (role: conventions-reviewer)
+   · relit le FICHIER RÉEL autour de chaque ligne signalée par verifier
+   · juge : confirmée / faux positif / exception légitime (P2 tolère les
+     séries d'exercices, P5 accepte des remarques groupées légitimes…)
+   · modifie l'issue candidate elle-même — jamais le contenu du cours :
+     - rien de confirmé → ferme avec le motif de chaque rejet
+     - au moins un point confirmé → réécrit le corps (juste les points
+       retenus), swap le label conventions-candidate → conventions-style,
+       laisse ouverte
+
+4. queue-next.sh reprend la main
+   · état de l'issue candidate changé (fermée ou promue) → succès
+   · toujours conventions-candidate → agent:failed, pas de retentative
+
+5. Les issues conventions-style qui restent sont le vrai backlog (jugé,
+   pas brut) — à traiter à la main, pas d'auto-fix branché.
+```
+
+### Ce qui distingue vraiment les deux
+
+| | Migration | Conventions |
+|---|---|---|
+| Le script seul peut-il conclure ? | Oui — macro `my*` présente ou non, fait binaire | Non, jamais — d'où le passage obligé par l'agent |
+| L'agent modifie… | le contenu du cours | seulement l'issue (jamais le contenu) |
+| Critère de succès de la file | une PR est ouverte | l'issue candidate a changé d'état |
+| Résultat pour l'humain | une PR Draft à relire | une issue triée (fermée ou confirmée) à traiter |
+
 ## Séquence d'un run
 
 1. `scaffold.sh` — issue (assignée `ocots`, label `agent`), branche
