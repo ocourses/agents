@@ -1,0 +1,47 @@
+name: File d'attente — migrations (verrou global Albert)
+
+# Dépile la plus ancienne issue `template-migration`, tous dépôts de
+# config/course-repos.txt confondus, lui envoie agent-migrate-latex.yml, et
+# ATTEND LA FIN avant de rendre la main (scripts/queue-next.sh).
+#
+# Ce workflow tourne toujours DANS ocourses/agents (jamais en workflow_call) :
+# c'est ce qui rend `concurrency:` global. `agent.yml` (workflow_call) a sa
+# concurrency scopée au dépôt appelant — un seul agent à la fois PAR DÉPÔT,
+# mais rien n'empêche deux dépôts de tourner en même temps, alors que le
+# budget Albert (tokens/minute) est partagé par tout le compte. Ici, chaque
+# tick tient le job occupé pendant toute la durée du run distant : le tick
+# suivant (cron) reste en file (cancel-in-progress: false) jusqu'à la fin.
+#
+# Nécessite le secret AGENTS_DISPATCH_TOKEN (PAT fine-grained, portée sur les
+# dépôts de config/course-repos.txt — Issues + Actions en lecture/écriture,
+# Contents + Metadata en lecture). Voir README.md.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: agent-albert-global
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    name: Traiter la prochaine cible de la file
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Secret requis
+        env:
+          TOKEN: ${{ secrets.AGENTS_DISPATCH_TOKEN }}
+        run: |
+          test -n "$TOKEN" || {
+            echo "::error::AGENTS_DISPATCH_TOKEN absent — voir README.md, section « File d'attente »"
+            exit 1
+          }
+
+      - name: Tick
+        env:
+          GH_TOKEN: ${{ secrets.AGENTS_DISPATCH_TOKEN }}
+        run: bash scripts/queue-next.sh

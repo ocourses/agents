@@ -1,0 +1,15 @@
+# Dépôts de cours surveillés par la file d'attente automatique
+# (scripts/queue-next.sh). Un par ligne, "owner/repo", "#" pour commenter.
+#
+# Un dépôt doit déjà avoir agent.yml + agent-migrate-latex.yml + le secret
+# ALBERT_API_KEY (voir README.md, section « Appeler l'agent depuis un dépôt
+# de cours ») pour être listé ici — sinon le déclenchement échoue. Un cours
+# pas encore embarqué à ce stade : on l'ajoute seulement une fois prêt, ça ne
+# casse rien de l'attendre (voir README.md, section « File d'attente »).
+
+ocourses/automatique-enseignants
+ocourses/mesure-integration-enseignants
+
+# ocourses/calcul-differentiel-edo-enseignants — a template/ + conventions/
+# et le détecteur (check.yml), mais pas encore agent.yml / ALBERT_API_KEY.
+# À décommenter une fois onboardé.

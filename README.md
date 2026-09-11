@@ -96,12 +96,15 @@ Passe l'id exact en input `model`.
 ```
 .github/workflows/agent.yml   workflow réutilisable (issue → PR → travail → bilan)
 .github/workflows/check.yml   workflow réutilisable, générique (détecteurs, pas de modèle)
+.github/workflows/queue.yml   tourne ICI (pas réutilisable) — verrou global, déclenche agent-migrate-latex.yml à distance
 scripts/scaffold.sh           couche A — mise en place du chantier
 scripts/run-opencode.sh       couche B — assemble AGENTS.md + lance OpenCode
 scripts/finalize.sh           couche A — clôture (suivi + bilan)
 scripts/checkers/             un détecteur par fichier (template-migration, conventions, …)
+scripts/queue-next.sh         dépile une issue de la file, déclenche, attend
 config/opencode.json          provider Albert, permissions
 config/AGENTS.base.md         socle commun injecté dans AGENTS.md
+config/course-repos.txt       dépôts de cours surveillés par la file d'attente
 roles/                        un fichier par rôle
 ```
 
@@ -174,6 +177,60 @@ jobs:
     secrets:
       AGENTS_READ_TOKEN: ${{ secrets.AGENTS_READ_TOKEN }}
 ```
+
+## File d'attente — déclenchement automatique des migrations
+
+`queue.yml` + `scripts/queue-next.sh` : dépile la plus ancienne issue
+`template-migration` (label posé par le checker ci-dessus), **tous dépôts de
+`config/course-repos.txt` confondus**, et lui envoie `agent-migrate-latex.yml`
+— sans intervention humaine. C'est le côté « travail » automatique, pendant
+que le checker reste le côté « détection ».
+
+**Seul `template-migration` est auto-déclenché.** Les issues `conventions`
+restent détection seule : pas de correcteur automatique sûr pour des règles
+qui demandent du jugement (P2, P3, P5) — voir plus bas si vous voulez brancher
+`nettoyer` (mécanique, C4 seulement) en plus.
+
+### Le verrou global — pourquoi un nouveau workflow, pas juste `concurrency:`
+
+`agent.yml` est un *workflow réutilisable* : sa `concurrency: group:
+agent-albert-${{ github.repository }}` s'évalue dans le contexte du dépôt
+**appelant**. GitHub Actions ne fait **pas** interagir deux groupes de
+concurrency situés dans deux dépôts différents, même identiques par leur nom
+— deux dépôts de cours peuvent donc consommer Albert en même temps.
+
+`queue.yml` contourne ça en ne bougeant pas : il tourne **toujours dans
+`ocourses/agents`** (jamais en `workflow_call`), déclenche
+`agent-migrate-latex.yml` sur le dépôt cible via `gh workflow run`, puis
+**attend la fin** (`gh run watch`) avant de rendre la main. Tant qu'un tick
+n'est pas fini, `concurrency: group: agent-albert-global,
+cancel-in-progress: false` retient le suivant en file — cette fois, pour de
+vrai, puisque tous les ticks sont des runs du *même* workflow dans le *même*
+dépôt.
+
+### Mise en place (une fois)
+
+1. **PAT fine-grained** (GitHub → Settings → Developer settings → Fine-grained
+   tokens), portée sur les dépôts de `config/course-repos.txt` :
+   `Issues` (lire/écrire), `Actions` (lire/écrire), `Contents` (lire),
+   `Metadata` (lire, obligatoire). Poser comme secret **`AGENTS_DISPATCH_TOKEN`
+   sur `ocourses/agents` uniquement** — pas besoin de le dupliquer par dépôt
+   de cours, contrairement à `ALBERT_API_KEY` / `AGENTS_READ_TOKEN` : ce PAT
+   est utilisé *depuis* `ocourses/agents`, jamais injecté ailleurs.
+2. **`config/course-repos.txt`** — un dépôt par ligne, seulement ceux qui ont
+   déjà `agent.yml` + `agent-migrate-latex.yml` + `ALBERT_API_KEY` (sinon le
+   déclenchement échoue proprement, avec un commentaire d'erreur sur
+   l'issue). Un cours pas encore embarqué : on l'ajoute plus tard, rien à
+   changer ailleurs.
+3. Sans le secret, `queue.yml` échoue vite et clairement (`::error::`) — pas
+   de comportement silencieux.
+
+### Comportement en échec
+
+Un run qui échoue (ou dont la PR n'est pas retrouvée) **n'est pas retenté
+automatiquement** : l'issue reçoit le label `agent:failed` et un commentaire
+avec le lien du run. Retirer le label la remet en file. Ce choix délibéré
+évite qu'une cible cassée ne boucle en silence sur le budget Albert.
 
 ## Rôles fournis
 
