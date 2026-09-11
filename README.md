@@ -95,57 +95,82 @@ Passe l'id exact en input `model`.
 
 ```
 .github/workflows/agent.yml   workflow réutilisable (issue → PR → travail → bilan)
-.github/workflows/scan.yml    workflow réutilisable (détection, pas de modèle)
+.github/workflows/check.yml   workflow réutilisable, générique (détecteurs, pas de modèle)
 scripts/scaffold.sh           couche A — mise en place du chantier
 scripts/run-opencode.sh       couche B — assemble AGENTS.md + lance OpenCode
 scripts/finalize.sh           couche A — clôture (suivi + bilan)
-scripts/scan-template-compliance.sh  détecteur — ouvre une issue par doc non conforme
+scripts/checkers/             un détecteur par fichier (template-migration, conventions, …)
 config/opencode.json          provider Albert, permissions
 config/AGENTS.base.md         socle commun injecté dans AGENTS.md
 roles/                        un fichier par rôle
 ```
 
-## Détecter ce qui n'est pas (encore) migré
+## Détecteurs — ce qui n'est pas (encore) conforme
 
-`scan.yml` (workflow réutilisable) + `scripts/scan-template-compliance.sh` :
-scanne un dépôt de cours et ouvre une issue (label `template-migration`) par
-document `.tex` non conforme au template `ocots`. **Script déterministe, pas
-un agent** : un `grep`, aucun appel modèle, aucun budget Albert consommé —
-peut tourner sur un cron sans y penser.
+`check.yml` (workflow réutilisable, générique) exécute **un** détecteur
+`scripts/checkers/<checker>.sh` sur un dépôt de cours et ouvre une issue par
+infraction trouvée. **Scripts déterministes, pas des agents** : `grep` /
+Python, aucun appel modèle, aucun budget Albert consommé — tournent sur un
+cron sans y penser. Un détecteur = un fichier, même principe que `roles/` pour
+les agents : ajouter un détecteur, c'est écrire `scripts/checkers/<nom>.sh`,
+rien d'autre à toucher dans `check.yml`.
 
-Deux statuts :
+| Checker | Détecte | Label | Source |
+|---|---|---|---|
+| `template-migration` | document `.tex` pas (ou pas complètement) migré vers le template `ocots` | `template-migration` | extrait `template/tex/ocots-compat.sty` à chaque run |
+| `conventions` | infractions **mécaniques** aux règles de `ocots-conventions` (P2, P3, P5, C4 au 2026-09-11) | `conventions-style` | enveloppe `conventions/bin/verifier` |
 
-| Statut | Détection |
-|---|---|
-| `MISSING` | pilote sans `\usepackage[...]{ocots}` — jamais migré |
-| `LEGACY` | pilote migré, mais lui ou sa chaîne `\input` utilise encore un nom de `template/tex/ocots-compat.sty` |
+### `template-migration`
 
-La liste des noms « legacy » est **extraite de `ocots-compat.sty` à chaque
-run**, pas codée en dur : ce fichier maigrit au fil des migrations (chaque
-ligne supprimée = une migration terminée), le détecteur se resserre tout
-seul.
-
-Chaque issue contient le statut, les macros en cause, et la commande prête à
-lancer (`gh workflow run agent-migrate-latex.yml -f target=...`). **Ne
-déclenche rien automatiquement** — la migration reste un geste volontaire,
-un humain choisit quand et dans quel ordre.
+Deux statuts : `MISSING` (pilote sans `\usepackage[...]{ocots}` — jamais
+migré) / `LEGACY` (pilote migré, mais lui ou sa chaîne `\input` utilise
+encore un nom de `ocots-compat.sty`). La liste des noms « legacy » est
+extraite du fichier à chaque run, pas codée en dur : il maigrit au fil des
+migrations, le détecteur se resserre tout seul. Chaque issue contient le
+statut, les macros en cause, et la commande prête à lancer
+(`gh workflow run agent-migrate-latex.yml -f target=...`).
 
 ⚠️ Une ligne de `ocots-compat.sty` ne se supprime que quand **plus aucun
-document, dans aucun dépôt de cours**, n'utilise ce nom — pas seulement le
-dépôt qu'on vient de scanner. Le scan par dépôt ne suffit pas à trancher ça ;
-vérifier avec un `grep` cross-dépôts avant de toucher au fichier de compat.
+document, dans aucun dépôt de cours existant**, n'utilise ce nom — et un
+cours pas encore créé ne peut de toute façon pas être scanné. Ce n'est donc
+jamais *prouvable*, seulement *mesurable sur l'existant* : la suppression
+reste une décision de dépréciation humaine, pas un geste automatique. Ce qui
+est automatisable, en revanche, c'est d'empêcher la régression : qu'un
+document **neuf** réintroduise un nom `my*` (à outiller en CI si besoin,
+séparément de ce détecteur).
 
-Appel depuis un dépôt de cours (cron + déclenchement manuel) :
+### `conventions`
+
+Enveloppe `conventions/bin/verifier` : regroupe ses trouvailles par fichier,
+une issue par fichier (pas par ligne). **Idempotent** — une issue existante
+est mise à jour (pas dupliquée), et se ferme toute seule (avec un
+commentaire) si le fichier n'a plus d'infraction au run suivant. Chaque
+issue rappelle que l'outil *mesure une ampleur, il ne certifie rien* (voir
+`ocots-conventions/README.md`, section « Ce que l'outil ne fait pas ») —
+zéro trouvaille ne veut pas dire la règle respectée, une trouvaille n'est
+pas automatiquement une faute. Nécessite le sous-module `conventions/` ;
+s'il est absent, le checker sort proprement sans rien faire (`::warning::`).
+
+### Appel depuis un dépôt de cours
+
+Un seul cron, un job par détecteur activé (le job « générique » ci-dessous
+sert de modèle pour en ajouter d'autres) :
 
 ```yaml
-name: Scan — conformité template ocots
+name: Check — conformité (template + conventions)
 on:
   schedule: [{ cron: "0 6 * * 1" }]
   workflow_dispatch: {}
 permissions: { contents: read, issues: write }
 jobs:
-  run:
-    uses: ocourses/agents/.github/workflows/scan.yml@main
+  template-migration:
+    uses: ocourses/agents/.github/workflows/check.yml@main
+    with: { checker: template-migration }
+    secrets:
+      AGENTS_READ_TOKEN: ${{ secrets.AGENTS_READ_TOKEN }}
+  conventions:
+    uses: ocourses/agents/.github/workflows/check.yml@main
+    with: { checker: conventions }
     secrets:
       AGENTS_READ_TOKEN: ${{ secrets.AGENTS_READ_TOKEN }}
 ```

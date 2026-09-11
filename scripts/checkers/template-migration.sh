@@ -5,9 +5,13 @@
 # modèle : c'est un grep, pas un agent.
 #
 # Deux statuts détectés :
-#   MISSING — le pilote (\documentclass) n'utilise pas les classes ocots-*
-#             (jamais migré, ex. encore sur tpN7.sty/Jgbook)
-#   LEGACY  — le pilote est sur ocots-*, mais lui ou sa chaîne \input utilise
+#   MISSING — le pilote n'a pas \usepackage[...]{ocots} (jamais migré, ex.
+#             encore sur tpN7.sty/Jgbook). Signal volontairement unique : les
+#             classes cibles varient selon le support (ocots-td/book/exam pour
+#             TD/poly/examen, mais \documentclass{beamer} + \usepackage{ocots}
+#             pour les diapositives, pas de classe ocots-* dédiée) — seul
+#             \usepackage{ocots} est constant partout.
+#   LEGACY  — le pilote est migré, mais lui ou sa chaîne \input utilise
 #             encore un nom de tex/ocots-compat.sty (migration partielle)
 #
 # La liste des noms « legacy » est extraite de ocots-compat.sty à chaque run,
@@ -162,7 +166,7 @@ for pilot in "${pilots[@]}"; do
     echo "gh workflow run ${DISPATCH_WORKFLOW} -f target=${pilot}"
     echo '```'
     echo
-    echo "_Détecté automatiquement par \`scan-template-compliance.sh\` (\`ocourses/agents\`)._"
+    echo "_Détecté automatiquement par \`checkers/template-migration.sh\` (\`ocourses/agents\`)._"
   } > "$body_file"
 
   gh issue create --repo "$REPO" --title "$title" --label "$LABEL" --body-file "$body_file" >/dev/null

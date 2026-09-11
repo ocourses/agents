@@ -1,32 +1,42 @@
-name: Scan — conformité template
+name: Check — détecteurs de non-conformité
 
-# Workflow RÉUTILISABLE : repère les documents .tex d'un dépôt de cours qui ne
-# sont pas (ou pas complètement) migrés vers le template `ocots`, et ouvre une
-# issue par document, label `template-migration`. Déterministe (grep sur
-# tex/ocots-compat.sty), aucun appel modèle, aucun budget Albert consommé.
+# Workflow RÉUTILISABLE, générique : exécute UN détecteur (scripts/checkers/<checker>.sh)
+# sur le dépôt appelant et ouvre une issue par infraction trouvée. Déterministe,
+# aucun appel modèle, aucun budget Albert consommé — peut tourner sur un cron.
 #
-# Ne déclenche rien d'autre : l'issue reste à traiter à la main (choisir la
-# cible, lancer le workflow de migration suggéré dans le corps de l'issue).
+# Un détecteur = un fichier scripts/checkers/<nom>.sh, même principe que
+# roles/<nom>.md pour les agents. Ajouter un détecteur : écrire le script,
+# l'appeler avec `checker: <nom>` depuis le dépôt de cours. Rien d'autre à
+# modifier ici.
 #
-# Le dépôt appelant fournit un job minimal :
+# Le dépôt appelant fournit un job par détecteur qu'il veut activer (voir
+# .agents/README.md pour l'exemple complet — un cron, plusieurs jobs) :
 #
 #   permissions: { contents: read, issues: write }
 #   jobs:
-#     run:
-#       uses: ocourses/agents/.github/workflows/scan.yml@main
-#       secrets:
-#         AGENTS_READ_TOKEN: ${{ secrets.AGENTS_READ_TOKEN }}
+#     template-migration:
+#       uses: ocourses/agents/.github/workflows/check.yml@main
+#       with: { checker: template-migration }
+#       secrets: { AGENTS_READ_TOKEN: ${{ secrets.AGENTS_READ_TOKEN }} }
+#     conventions:
+#       uses: ocourses/agents/.github/workflows/check.yml@main
+#       with: { checker: conventions }
+#       secrets: { AGENTS_READ_TOKEN: ${{ secrets.AGENTS_READ_TOKEN }} }
 
 on:
   workflow_call:
     inputs:
+      checker:
+        description: "Nom du détecteur (scripts/checkers/<checker>.sh)"
+        required: true
+        type: string
       agents_ref:
         description: "Ref de ocourses/agents"
         required: false
         type: string
         default: main
       dispatch_workflow:
-        description: "Nom du workflow de migration à suggérer dans les issues"
+        description: "Nom du workflow de migration à suggérer dans les issues (checker template-migration)"
         required: false
         type: string
         default: agent-migrate-latex.yml
@@ -35,8 +45,8 @@ on:
         required: true
 
 jobs:
-  scan:
-    name: Scan de conformité
+  check:
+    name: "Check · ${{ inputs.checker }}"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout du dépôt appelant
@@ -70,9 +80,16 @@ jobs:
               git config "submodule.${name}.url" "$https"
             done
 
-      - name: Scan
+      - name: Détecteur introuvable ?
+        run: |
+          test -f "_agents/scripts/checkers/${{ inputs.checker }}.sh" || {
+            echo "::error::détecteur introuvable : scripts/checkers/${{ inputs.checker }}.sh"
+            exit 1
+          }
+
+      - name: Check
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           DISPATCH_WORKFLOW: ${{ inputs.dispatch_workflow }}
-        run: bash _agents/scripts/scan-template-compliance.sh
+        run: bash "_agents/scripts/checkers/${{ inputs.checker }}.sh"
