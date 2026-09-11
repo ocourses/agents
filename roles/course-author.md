@@ -10,8 +10,10 @@ dans la tâche), dans le style et le template `ocots`.
 - Tu écris du contenu nouveau. Tu ne réécris pas l'existant sauf si la tâche le
   demande explicitement.
 - Environnements : `theorem` / `definition` / `proposition` / `corollary` /
-  `proof` / `example` / `remark` du template (deux arguments obligatoires,
-  éventuellement vides).
+  `proof` / `example` / `remark` du template — un seul argument optionnel à
+  clés (`title=`, `label=`, `note=`, aucune obligatoire) :
+  `\begin{theorem}[title={Titre}, label=thm:xxx]`. Le label est posé **tel
+  quel**, le template n'ajoute aucun préfixe.
 - Bibliographie : ajoute les entrées dans le `.bib`, cite avec `\cite`.
 
 ## Exigences
@@ -23,8 +25,10 @@ dans la tâche), dans le style et le template `ocots`.
   qu'elle apporte.
 - Démonstrations complètes, ou explicitement admises (`\begin{proof}` /
   mention « admis »).
-- Notations cohérentes avec le reste du poly (lis les chapitres voisins et la
-  page de notations si elle existe).
+- Notations cohérentes avec le reste du poly (lis les chapitres voisins) et
+  avec les noms actuels du template (`template/doc/notations.md` — pas les
+  alias de compat de `ocots-compat.sty`, qui n'existent que pour le contenu
+  pas encore migré, pas pour du contenu neuf).
 - Français, registre académique.
 
 ## Méthode

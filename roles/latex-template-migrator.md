@@ -40,17 +40,36 @@ classe, préambule, noms d'environnements, macros.
 - Métadonnées `\title \shorttitle \numero \date \discipline \promotion` :
   inchangées. `\maketitle` conservé. Une page de titre « manuelle »
   (`\title{{\bf ...}\\ ...}` avec logo) se convertit en ces métadonnées.
+- **Examen (`ocots-exam`) — champs de consignes dédiés** : `\duree{}`,
+  `\documents{}`, `\calculatrice{}`, `\examnote{}` (dans cet ordre de
+  composition), appelés automatiquement par `\maketitle`
+  (`template/doc/commandes.md`, § « TD et examens »). Un bloc manuel
+  `\begin{instructions}…\end{instructions}` qui ne contient *que* durée /
+  documents autorisés / calculatrice se convertit en ces champs — mapping
+  formel, pas un changement de fond. S'il contient autre chose (consignes
+  propres au sujet), garde `instructions` (toujours valide, migration
+  progressive prévue par le template) ou mets le surplus dans `\examnote`.
+  **N'ajoute pas** les clés `points=` sur les `exercise` ni le barème
+  calculé automatiquement de ta propre initiative — ça change ce qui est
+  affiché (barème calculé vs. énoncé tel quel par l'auteur), ce n'est pas
+  une migration de forme. Signale la possibilité dans le bilan, fais-le
+  seulement si la tâche le demande explicitement.
 
 ## Renommage des environnements
 
 `exer`→`exercise` · `quest`→`question` · sous-questions
 (`enumerate[label=\alph*)]` + `\item`)→`subquestion` · `rmq`/`rmq*`→`remark`/`remark*`
-· `thm`→`theorem{}{}` · `prop`→`proposition{}{}` · `cor`→`corollary{}{}` ·
-`lem`→`lemma` · `defi`→`definition{}{}` · `exem`→`example` · `demon`→`proof`.
+· `thm`→`theorem` · `prop`→`proposition` · `cor`→`corollary` ·
+`lem`→`lemma` · `defi`→`definition` · `exem`→`example` · `demon`→`proof`.
 
-- Boîtes à titre : deux arguments obligatoires, éventuellement vides —
-  `\begin{theorem}{}{}`. Ne pose un label (`\begin{theorem}{}{thm:xxx}`) que si
-  le résultat est cité ailleurs (vérifie au `grep`).
+- **Boîtes à titre : un seul argument optionnel, à clés** — `title=`,
+  `label=`, `note=` (aucune n'est obligatoire) :
+  `\begin{theorem}[title={Titre}, label=thm:xxx]`. **Pas** de syntaxe à deux
+  arguments positionnels (`\begin{theorem}{}{}`) — c'est l'ancienne forme, à
+  ne pas reproduire même « vide ». Le label est posé **tel quel**, le
+  template n'ajoute aucun préfixe (vérifie sur `template/examples/content/boxes.tex`
+  si un doute : chaque appel y est visible). Ne pose un label que si le
+  résultat est cité ailleurs (vérifie au `grep`).
 - `\begin{exercise}` n'accepte **pas** de titre libre, seulement des clés
   (`label`, `points`, `nosolution`). Une citation de source
   (`\begin{exer}[Sontag 1.4]`) se remet en **texte d'intro** de l'exercice, on
@@ -65,14 +84,41 @@ classe, préambule, noms d'environnements, macros.
 - `\veps` : fourni par `math=base`. Vérifie avant de supposer.
 - `\IR \IN \IZ \IQ \IC` (de `tpN7`) → `\R \N \Z \Q \C` (du template) si présents,
   sinon garde une def locale.
-- `\fonction`, `\diag`, `\trace`, `\rang`… : si absents du template
-  (`grep` dans `template/tex/math/`), garde une **définition locale minimale
-  commentée** dans le préambule et **liste-la dans le bilan**. N'invente jamais
-  une macro du template.
-- **`\fonction` du template** produit un `array` **nu** : il ne s'utilise qu'en
-  mode maths (`\[ \fonction{...} \]`). L'ancien `\fonction` de `tpN7`/`Jgbook`
-  s'auto-encadrait — si l'appel d'origine était hors maths, encadre-le, ou
-  garde la définition locale d'origine. **Compile pour trancher.**
+- Macro absente du template (`grep` dans `template/tex/math/` et
+  `template/doc/notations.md` pour vérifier) : garde une **définition locale
+  minimale commentée** dans le préambule et **liste-la dans le bilan**.
+  N'invente jamais une macro du template.
+
+### Notations mathématiques : noms actuels, pas les alias de compat
+
+Le module maths a été renommé en bloc (`\fonction`→`\functiondef`,
+`\rang`→`\rank` (désormais localisé fr/en tout seul, plus de doublon),
+`\dd`/`\xdif`/`\diff`→`\dif`, `\petito`→`\smallo`, `\grandO`→`\bigO`,
+`\enstq`→`\setst`, `\intervalleff`/`\intervalleoo`/…→`\intervalcc`/
+`\intervaloo`/…, `\Ical`→`\TimeInterval`, `\Vcal`→`\Neighborhoods`,
+`\Lcal`/`\xCn`→`\ContinuousLinear`/`\Cclass`, `\Sn`/`\Nb`/`\Rn`/`\Rp`/…→
+`\Sphere`/`\Nbar`/`\Rnonpos`/`\Rnonneg`/…, et une quinzaine d'autres — **la
+référence est `template/doc/notations.md`, pas cette liste** (elle peut
+elle-même dater). `\M` (matrice, gras) a disparu **sans alias** : utilise
+`\calset{M}` (générique) ou une définition locale si le rendu gras est
+voulu.
+
+- Les anciens noms compilent encore (`ocots-compat.sty` les garde en alias),
+  **mais utilise systématiquement les noms actuels** dans ce que tu écris —
+  ce sont des alias de transition pour du contenu pas encore migré, pas une
+  API à perpétuer. Une macro maison locale qui fait doublon avec un nom
+  *actuel* du template (pas un alias) : adopte celui du template.
+- **`\functiondef` (ex-`\fonction`) produit un `array` nu** : ne s'utilise
+  qu'en mode maths (`\[ \functiondef{...} \]`). L'ancien `\fonction` de
+  `tpN7`/`Jgbook` s'auto-encadrait — si l'appel d'origine était hors maths,
+  encadre-le, ou garde la définition locale d'origine. **Compile pour
+  trancher.**
+- L'usage d'un ancien nom déclenche un avertissement de compilation
+  (`Deprecated mathematical macro used`), **une seule fois par run** même
+  s'il y en a plusieurs — ce n'est pas un compteur. Le voir dans
+  `latex-compile` = il reste au moins un ancien nom quelque part dans le
+  document migré ; localise-le au `grep` (pas à l'œil), ne conclus pas
+  « migré » sur la seule absence d'erreur de compilation.
 
 ## Pièges connus (incompatibilités template)
 
@@ -89,7 +135,8 @@ classe, préambule, noms d'environnements, macros.
    depuis la cible, le préambule proposé, la table de renommage, les macros
    sans équivalent.
 2. Lis `template/examples/td/main.tex` (ou `poly/`) en entier ; consulte
-   `template/doc/commandes.md` par `grep`/`sed` ciblés, pas en entier.
+   `template/doc/commandes.md` et `template/doc/notations.md` (référence des
+   macros mathématiques) par `grep`/`sed` ciblés, pas en entier.
 3. **Un fichier à la fois, commité avant de passer au suivant.** Ordre :
    préambule + en-tête du pilote → `git add <pilote>` + commit ; puis chaque
    fichier `\input`é → `git add <ce fichier>` + commit. **Ne garde jamais
