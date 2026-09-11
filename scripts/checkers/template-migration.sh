@@ -52,10 +52,15 @@ tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
   grep -oE '\\ocotsaliasenv\{[A-Za-z@*]+\}' "$COMPAT" | sed -E 's/.*\{(.*)\}/\1/'
 } | grep -v '@' | sort -u > "$tmp/envs.txt"
 
-# Commandes : \newcommand{\nom} et \let\nom...
+# Commandes : \newcommand{\nom}, \let\nom... et \DeclareRobustCommand{\nom}
+# (ce dernier motif porte à lui seul ~80 alias de macros mathématiques
+# renommées par le chantier 2 du template — sans lui le détecteur les rate
+# toutes silencieusement, cf. .agents ou le suivi de la PR qui a ajouté cette
+# ligne)
 {
   grep -oE '\\newcommand\{\\[A-Za-z@]+\}' "$COMPAT" | sed -E 's/.*\{\\(.*)\}/\1/'
   grep -oE '^\\let\\[A-Za-z@]+' "$COMPAT" | sed -E 's/^\\let\\//'
+  grep -oE '\\DeclareRobustCommand\{\\[A-Za-z@]+\}' "$COMPAT" | sed -E 's/.*\{\\(.*)\}/\1/'
 } | grep -v '@' | sort -u > "$tmp/cmds.txt"
 
 n_envs=$(wc -l < "$tmp/envs.txt"); n_cmds=$(wc -l < "$tmp/cmds.txt")
@@ -136,6 +141,28 @@ for pilot in "${pilots[@]}"; do
       fi
     done
     found_names="$(printf '%s\n' "$found_names" | sed '/^$/d' | sort -u)"
+
+    # Une macro peut être *redéfinie localement* dans le dépôt de cours
+    # (\newcommand/\renewcommand/\DeclareRobustCommand/\let), délibérément,
+    # pour un usage qui ne colle pas à la version du template — cas réel et
+    # documenté (poly/automatique.tex redéfinit \fonction en 4 args car le
+    # \functiondef du template est une array 5 args nue). Ce n'est alors pas
+    # un alias de compat en jeu : exclure ces noms-là des trouvailles évite
+    # un faux positif qui gâcherait un run de migration pour rien.
+    if [ -n "$found_names" ]; then
+      kept=""
+      while IFS= read -r name; do
+        [ -n "$name" ] || continue
+        overridden=0
+        for f in "${chain[@]}"; do
+          grep -qE "\\\\(re)?newcommand\{\\\\${name}\}|\\\\DeclareRobustCommand\{\\\\${name}\}|\\\\let\\\\${name}\\\\" "$f" 2>/dev/null \
+            && { overridden=1; break; }
+        done
+        [ "$overridden" -eq 0 ] && kept="$kept"$'\n'"$name"
+      done <<< "$found_names"
+      found_names="$(printf '%s\n' "$kept" | sed '/^$/d' | sort -u)"
+    fi
+
     [ -n "$found_names" ] && status="LEGACY"
   fi
 
