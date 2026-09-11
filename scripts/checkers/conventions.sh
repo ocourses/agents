@@ -1,16 +1,23 @@
 #!/usr/bin/env bash
-# Détecteur — enveloppe `conventions/bin/verifier` (ocots-conventions) et ouvre
-# une issue par fichier en infraction. Déterministe, aucun appel modèle.
+# Détecteur — enveloppe `conventions/bin/verifier` (ocots-conventions) et
+# ouvre une issue **candidate** par fichier en infraction brute. Déterministe,
+# aucun appel modèle, mais volontairement PAS un verdict : `verifier` lui-même
+# le dit (ocots-conventions/README.md, § « Ce que l'outil ne fait pas ») — il
+# rate des choses, il signale du correct, zéro trouvaille ne veut pas dire
+# règle respectée. Une trouvaille encore moins.
 #
-# `verifier` ne couvre que les règles *mécaniques* (P2, P3, P5, C4 au
-# 2026-09-11) — un signal, pas un verdict (voir ocots-conventions/README.md,
-# section « Ce que l'outil ne fait pas »). L'issue le rappelle : zéro
-# trouvaille ne veut pas dire règle respectée, une trouvaille n'est pas
-# automatiquement une faute.
+# Ce script ne fait donc QUE lister des candidats (label
+# conventions-candidate) — il n'affirme rien et ne les qualifie pas de vraie
+# infraction. Le tri revient à un agent (rôle conventions-reviewer, via
+# agent-review-conventions.yml, orchestré par la file d'attente globale
+# queue.yml) : il relit le fichier, exerce le jugement que le script n'a pas,
+# et promeut ou ferme chaque candidat. Ce script ne modifie donc jamais une
+# issue déjà promue par l'agent (label conventions-style) : voir plus bas.
 #
-# Idempotent : une issue existante pour un fichier est mise à jour (pas
-# dupliquée) ; un fichier qui n'a plus d'infraction voit son issue fermée
-# automatiquement, avec un commentaire.
+# Idempotent : une issue candidate existante pour un fichier est mise à jour
+# (pas dupliquée) ; un fichier qui n'a plus d'infraction brute voit sa
+# candidate fermée automatiquement (mais pas une issue déjà promue : elle
+# reste au jugement de l'agent / d'un humain).
 #
 # Entrées (variables d'environnement) :
 #   REPO       owner/name du dépôt scanné (défaut: $GITHUB_REPOSITORY)
@@ -20,7 +27,8 @@ set -euo pipefail
 
 REPO="${REPO:-${GITHUB_REPOSITORY:-}}"
 CONVENTIONS_DIR="${CONVENTIONS_DIR:-conventions}"
-LABEL="conventions-style"
+LABEL="conventions-candidate"
+REVIEWED_LABEL="conventions-style"
 VERIFIER="${CONVENTIONS_DIR}/bin/verifier"
 
 : "${REPO:?REPO requis}"
@@ -58,7 +66,9 @@ done < "$tmp/out.txt"
 sort -u -o "$tmp/files.txt" "$tmp/files.txt"
 
 gh label create "$LABEL" --repo "$REPO" --color fbca04 \
-  --description "Infraction mécanique aux conventions ocots-conventions" 2>/dev/null || true
+  --description "Candidat brut (script) à trier par l'agent conventions-reviewer — pas encore un verdict" 2>/dev/null || true
+gh label create "$REVIEWED_LABEL" --repo "$REPO" --color d93f0b \
+  --description "Infraction confirmée par un agent après relecture" 2>/dev/null || true
 
 existing_json="$(gh issue list --repo "$REPO" --label "$LABEL" --state open \
   --json number,title,body --limit 200 2>/dev/null || echo '[]')"
@@ -72,14 +82,16 @@ while IFS= read -r path; do
   title="[conventions] $path"
   body_file="$tmp/body.md"
   {
-    echo "**Conventions : \`ocots-conventions\` $pin**"
+    echo "**⚠️ Candidat brut, pas relu.** Sortie mécanique de \`conventions/bin/verifier\`"
+    echo "(\`ocots-conventions\` $pin) — *un signal, pas un verdict*. L'outil rate des"
+    echo "choses, signale parfois du correct, et zéro trouvaille ne veut pas dire la"
+    echo "règle respectée (voir"
+    echo "[\`ocots-conventions\` § Ce que l'outil ne fait pas](https://github.com/ocourses/ocots-conventions#ce-que-loutil-ne-fait-pas))."
+    echo "**Ne pas agir sur ce qui suit sans relecture.** Un agent (\`conventions-reviewer\`)"
+    echo "passera trier ces lignes : confirmées → label \`conventions-style\`, rejetées →"
+    echo "fermeture expliquée."
     echo
-    echo "Règles **mécaniques** uniquement — *signal, pas verdict* : l'outil mesure"
-    echo "une ampleur, il ne certifie rien. Zéro trouvaille ne veut pas dire la règle"
-    echo "respectée ; une trouvaille n'est pas automatiquement une faute. Voir"
-    echo "[\`ocots-conventions\` § Ce que l'outil ne fait pas](https://github.com/ocourses/ocots-conventions#ce-que-loutil-ne-fait-pas)."
-    echo
-    echo "| Ligne | Règle | Message |"
+    echo "| Ligne | Règle | Message brut |"
     echo "|---|---|---|"
     sort -n "$row_file"
     echo
@@ -116,9 +128,9 @@ while IFS=$'\t' read -r num title; do
   path="${title#\[conventions\] }"
   if ! grep -qxF "$path" "$tmp/files.txt"; then
     gh issue comment "$num" --repo "$REPO" \
-      --body "Plus aucune infraction mécanique détectée sur ce fichier (\`checkers/conventions.sh\`). Fermeture automatique — une relecture humaine reste utile pour ce que l'outil ne voit pas." >/dev/null
+      --body "Plus aucune trouvaille brute de \`verifier\` sur ce fichier. Fermeture automatique de ce candidat — rappel : zéro trouvaille ne certifie pas la conformité (règles non outillées, voir \`ocots-conventions/README.md\`)." >/dev/null
     gh issue close "$num" --repo "$REPO" --reason completed >/dev/null
-    echo "  x issue fermée (#$num) : $path"
+    echo "  x candidat fermé (#$num) : $path"
     n_closed=$((n_closed+1))
   fi
 done < <(printf '%s' "$existing_json" | jq -r '.[] | "\(.number)\t\(.title)"')
