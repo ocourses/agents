@@ -17,8 +17,14 @@ name: File d'attente — migrations (verrou global Albert)
 # Contents + Metadata en lecture). Voir README.md.
 
 on:
+  # Décalé de 7 min (pas *:00/:15/:30/:45) : GitHub documente une charge plus
+  # forte sur les runners aux horaires ronds, où tout le monde programme son
+  # cron — les schedules exacts y sont davantage sujets au retard/à l'oubli.
+  # Constaté en réel : 4 créneaux */15 consécutifs manqués après le premier
+  # merge, aucune autre anomalie détectable (workflow state: active, sur
+  # main, secret présent — le déclenchement manuel fonctionnait, lui).
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "7,22,37,52 * * * *"
   workflow_dispatch: {}
 
 concurrency:
