@@ -390,6 +390,68 @@ label `agent:failed` et un commentaire avec le lien du run. Retirer le label
 la remet en file. Ce choix délibéré évite qu'une cible cassée ne boucle en
 silence sur le budget Albert.
 
+### Coordination avec un travail manuel — protocole de réclamation
+
+Le verrou global (`concurrency: agent-albert-global`) protège les runs de
+`queue.yml` **entre eux**. Il ne protège rien du tout contre un travail
+manuel — par exemple une session Claude Code locale — qui lirait/modifierait
+la même issue sans passer par cette file : ce chemin-là ne touche jamais
+GitHub Actions, donc jamais ce verrou.
+
+`scripts/claim-issue.sh` est la **source unique** du protocole de
+réclamation, utilisée par `queue-next.sh` et par tout travail manuel :
+
+```bash
+scripts/claim-issue.sh status  <repo> <issue>            # libre / réclamée / échec
+scripts/claim-issue.sh claim   <repo> <issue> <origine>   # échoue si déjà réclamée
+scripts/claim-issue.sh release <repo> <issue>             # fin normale (succès)
+scripts/claim-issue.sh fail    <repo> <issue> <raison>    # échec, libère la réclamation
+```
+
+GitHub n'offre pas de transaction sur les labels (pas de compare-and-swap) :
+ce n'est donc **pas** un verrou parfait, seulement une convention — vérifier,
+réclamer tout de suite après, ne jamais commencer le travail avant que
+`claim` ait réussi. Avec un seul bot (verrou global : jamais deux ticks
+automatisés en même temps) et un seul humain à la fois, la fenêtre de course
+est nulle en pratique si le protocole est suivi des deux côtés.
+
+**Réclamation abandonnée** (run Actions annulé/tué avant sa propre gestion
+d'échec, ou session locale interrompue sans être allée jusqu'à `release` ou
+`fail`) : `queue-next.sh` scanne, à chaque tick et pour chaque dépôt, les
+issues `agent:dispatched` dont le commentaire de prise en charge date de plus
+de `STALE_HOURS` (défaut 3 h, largement au-dessus du pire cas observé
+~40 min) et les marque `agent:failed` automatiquement — sans ce filet, une
+réclamation morte resterait bloquée pour de bon, invisible.
+
+*(Un validateur séparé qui interdirait la coexistence de certains labels a été
+envisagé et écarté : GitHub ne permettant pas de vraie transaction, un tel
+validateur ne ferait que détecter une course après coup — exactement ce que
+fait déjà le ramasse-miettes ci-dessus, pour moins de complexité.)*
+
+**Confier une issue à une session Claude Code locale** — modèle à copier en
+adaptant `<repo>` et `<issue>` :
+
+> Tu vas traiter l'issue `<repo>#<issue>` de la file d'attente
+> `ocourses/agents`.
+>
+> 1. Vérifie d'abord : `bash scripts/claim-issue.sh status <repo> <issue>`
+>    (dans un clone de `ocourses/agents`, avec `gh` déjà authentifié). Si le
+>    résultat n'est pas `libre`, **arrête-toi et préviens-moi** — ne touche à
+>    rien.
+> 2. Réclame : `bash scripts/claim-issue.sh claim <repo> <issue> "Claude Code
+>    local (Olivier)"`. Si ça échoue, quelqu'un t'a devancé entre les deux
+>    étapes — arrête-toi.
+> 3. Regarde le label présent sur l'issue (`template-migration` ou
+>    `conventions-candidate`) et suis les instructions du rôle correspondant
+>    (`roles/latex-template-migrator.md` ou `roles/conventions-reviewer.md`
+>    dans `ocourses/agents`) — mêmes consignes que l'agent automatisé.
+> 4. Ouvre une PR dont le corps contient `Closes #<issue>` (lien natif
+>    GitHub, fermeture automatique à la fusion).
+> 5. À la fin : succès → `bash scripts/claim-issue.sh release <repo>
+>    <issue>` ; échec → `bash scripts/claim-issue.sh fail <repo> <issue>
+>    "<raison>"`. Dans les deux cas, ne me laisse jamais l'issue réclamée sans
+>    rien d'autre.
+
 ## Rôles fournis
 
 | Rôle | Mission |
