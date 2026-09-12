@@ -29,6 +29,9 @@
 #                        dépôt de config/course-repos.txt : Issues (lire/écrire),
 #                        Actions (lire/écrire), Contents (lire), Metadata (lire).
 #   COURSE_REPOS_FILE   défaut: config/course-repos.txt
+#   CHAIN               rang du tick dans la chaîne (défaut 0, cf. plus bas)
+#   MAX_CHAIN           nombre maximum de ticks enchaînés (défaut 6)
+#   GITHUB_REPOSITORY   dépôt hôte, pour se redéclencher soi-même
 set -euo pipefail
 
 COURSE_REPOS_FILE="${COURSE_REPOS_FILE:-config/course-repos.txt}"
@@ -158,4 +161,49 @@ if [ "$success" -ne 1 ]; then
   gh issue comment "$number" --repo "$repo" \
     --body "⚠️ Run terminé en échec, ou sans résultat exploitable : $run_url. **Pas de nouvelle tentative automatique** — vérifier (logs du run, fichier de suivi \`.agents/runs/\`), puis retirer le label \`$FAILED_LABEL\` pour remettre en file." >/dev/null
   echo "ÉCHEC (rc=$rc) — voir $run_url"
+fi
+
+# ---------------------------------------------------------------------------
+# Auto-chaînage — c'est LUI qui vide la file, pas le cron.
+#
+# Un tick = une tâche. Avec ~190 tâches en attente, compter sur le cron pour
+# les enchaîner supposerait qu'il parte à l'heure à chaque fois ; il ne part
+# pas du tout ici (voir l'en-tête de queue.yml). On se redéclenche donc
+# soi-même tant qu'il reste du travail, et le cron horaire ne sert plus qu'à
+# rallumer une chaîne éteinte.
+#
+# Deux conditions d'arrêt, volontairement strictes :
+#   - plus rien d'éligible (n <= 1 : la seule tâche du tour était la nôtre) ;
+#   - plafond MAX_CHAIN atteint, pour qu'une file qui se remplit toute seule
+#     (détecteurs hebdomadaires) ne puisse pas boucler indéfiniment.
+#
+# Le redéclenchement passe par le PAT, pas par github.token : un dispatch émis
+# avec le jeton par défaut ne crée PAS de nouveau run (garde-fou anti-récursion
+# de GitHub Actions). D'où la nécessité que AGENTS_DISPATCH_TOKEN porte aussi
+# sur ocourses/agents lui-même, en Actions:write.
+# ---------------------------------------------------------------------------
+CHAIN="${CHAIN:-0}"
+MAX_CHAIN="${MAX_CHAIN:-6}"
+SELF_REPO="${GITHUB_REPOSITORY:-ocourses/agents}"
+
+if [ "$n" -le 1 ]; then
+  echo "File vidée (aucune autre tâche éligible ce tour-ci) — la chaîne s'arrête."
+  exit 0
+fi
+
+next=$(( CHAIN + 1 ))
+if [ "$next" -ge "$MAX_CHAIN" ]; then
+  echo "Plafond de $MAX_CHAIN ticks enchaînés atteint — il reste environ $(( n - 1 )) tâche(s)."
+  echo "Le prochain cron (horaire) rallumera la chaîne ; ou relancer à la main."
+  exit 0
+fi
+
+echo "Tick $next/$MAX_CHAIN — environ $(( n - 1 )) tâche(s) restante(s), on enchaîne."
+if gh workflow run queue.yml --repo "$SELF_REPO" \
+     -f chain="$next" -f max_chain="$MAX_CHAIN"; then
+  echo "Tick suivant déclenché sur $SELF_REPO."
+else
+  echo "::warning::redéclenchement impossible — AGENTS_DISPATCH_TOKEN porte-t-il"
+  echo "::warning::sur $SELF_REPO avec Actions:write ? La chaîne s'arrête ici ;"
+  echo "::warning::le cron horaire prendra le relais."
 fi

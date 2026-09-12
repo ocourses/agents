@@ -47,9 +47,22 @@ on:
   # automatiquement les workflows planifiés d'un dépôt public après 60 JOURS
   # SANS ACTIVITÉ. Si la file se tait après une longue pause (vacances), c'est
   # la première chose à vérifier : Actions -> ce workflow -> « Enable workflow ».
+  # Horaire, et non plus au quart d'heure : ce n'est plus le cron qui assure le
+  # débit. Il ne fait que RELANCER une chaîne éteinte ; c'est l'auto-chaînage
+  # (fin de scripts/queue-next.sh) qui enchaîne les ticks tant qu'il reste des
+  # tâches, sans dépendre d'un créneau tenu à l'heure.
   schedule:
-    - cron: "3,18,33,48 * * * *"
-  workflow_dispatch: {}
+    - cron: "23 * * * *"
+  workflow_dispatch:
+    inputs:
+      chain:
+        description: "Rang du tick dans la chaîne — interne, laisser 0"
+        required: false
+        default: "0"
+      max_chain:
+        description: "Nombre maximum de ticks enchaînés d'affilée"
+        required: false
+        default: "6"
 
 concurrency:
   group: agent-albert-global
@@ -74,4 +87,7 @@ jobs:
       - name: Tick
         env:
           GH_TOKEN: ${{ secrets.AGENTS_DISPATCH_TOKEN }}
+          # Vides sur un déclenchement `schedule` : la chaîne repart de zéro.
+          CHAIN: ${{ inputs.chain || '0' }}
+          MAX_CHAIN: ${{ inputs.max_chain || '6' }}
         run: bash scripts/queue-next.sh

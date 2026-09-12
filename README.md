@@ -317,6 +317,36 @@ Parce que `conventions-reviewer` appelle Albert comme n'importe quel autre
 agent, il passe par **la même file, le même verrou** que les migrations —
 pas de cron séparé, pas de double dépense de budget.
 
+### Le débit : l'auto-chaînage, pas le cron
+
+Un tick = **une** tâche. Avec près de 190 tâches en attente, faire reposer le
+débit sur le cron supposerait qu'il parte à l'heure, tous les quarts d'heure,
+sans faute — or il ne part pas du tout sur ce dépôt (diagnostic complet dans
+l'en-tête de `queue.yml`).
+
+Le script se **redéclenche donc lui-même** en fin de tick tant qu'il reste des
+tâches. Le cron est repassé à **une fois par heure** et n'a plus qu'un rôle :
+rallumer une chaîne éteinte. Deux conditions d'arrêt :
+
+- plus rien d'éligible ;
+- plafond `max_chain` atteint (défaut **6** ticks d'affilée), pour qu'une file
+  qui se regarnit toute seule — les détecteurs tournent chaque semaine — ne
+  puisse pas boucler indéfiniment.
+
+Le redéclenchement passe par `AGENTS_DISPATCH_TOKEN`, **jamais** par
+`github.token` : un `workflow_dispatch` émis avec le jeton par défaut ne crée
+pas de nouveau run, c'est le garde-fou anti-récursion de GitHub Actions. D'où
+la nécessité que le PAT porte aussi sur `ocourses/agents` lui-même, en
+`Actions:write`.
+
+Pour lancer une chaîne à la main : *Actions → File d'attente → Run workflow*,
+en laissant `chain` à 0. `max_chain` y est réglable au coup par coup.
+
+**Ordre de grandeur observé** : ~40 min pour une migration, ~4 min pour un
+triage conventions. Les runs d'agent s'exécutent dans les dépôts de cours, qui
+restent **privés donc facturés** — vider toute la file dépasserait le quota
+mensuel inclus. À surveiller avant de lancer une longue chaîne.
+
 ### Le verrou global — pourquoi un nouveau workflow, pas juste `concurrency:`
 
 `agent.yml` est un *workflow réutilisable* : sa `concurrency: group:
