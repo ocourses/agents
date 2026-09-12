@@ -1,0 +1,95 @@
+name: Check — détecteurs de non-conformité
+
+# Workflow RÉUTILISABLE, générique : exécute UN détecteur (scripts/checkers/<checker>.sh)
+# sur le dépôt appelant et ouvre une issue par infraction trouvée. Déterministe,
+# aucun appel modèle, aucun budget Albert consommé — peut tourner sur un cron.
+#
+# Un détecteur = un fichier scripts/checkers/<nom>.sh, même principe que
+# roles/<nom>.md pour les agents. Ajouter un détecteur : écrire le script,
+# l'appeler avec `checker: <nom>` depuis le dépôt de cours. Rien d'autre à
+# modifier ici.
+#
+# Le dépôt appelant fournit un job par détecteur qu'il veut activer (voir
+# .agents/README.md pour l'exemple complet — un cron, plusieurs jobs) :
+#
+#   permissions: { contents: read, issues: write }
+#   jobs:
+#     template-migration:
+#       uses: ocourses/agents/.github/workflows/check.yml@main
+#       with: { checker: template-migration }
+#       secrets: { AGENTS_READ_TOKEN: ${{ secrets.AGENTS_READ_TOKEN }} }
+#     conventions:
+#       uses: ocourses/agents/.github/workflows/check.yml@main
+#       with: { checker: conventions }
+#       secrets: { AGENTS_READ_TOKEN: ${{ secrets.AGENTS_READ_TOKEN }} }
+
+on:
+  workflow_call:
+    inputs:
+      checker:
+        description: "Nom du détecteur (scripts/checkers/<checker>.sh)"
+        required: true
+        type: string
+      agents_ref:
+        description: "Ref de ocourses/agents"
+        required: false
+        type: string
+        default: main
+      dispatch_workflow:
+        description: "Nom du workflow de migration à suggérer dans les issues (checker template-migration)"
+        required: false
+        type: string
+        default: agent-migrate-latex.yml
+    secrets:
+      AGENTS_READ_TOKEN:
+        required: true
+
+jobs:
+  check:
+    name: "Check · ${{ inputs.checker }}"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout du dépôt appelant
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Checkout de la base d'agents
+        uses: actions/checkout@v4
+        with:
+          repository: ocourses/agents
+          ref: ${{ inputs.agents_ref }}
+          path: _agents
+          persist-credentials: false
+          token: ${{ secrets.AGENTS_READ_TOKEN }}
+
+      - name: Sous-modules privés (lecture via PAT)
+        env:
+          TOKEN: ${{ secrets.AGENTS_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -f .gitmodules || { echo "pas de sous-module"; exit 0; }
+          git config -f .gitmodules --get-regexp '^submodule\..*\.url$' \
+          | while read -r key url; do
+              name="${key#submodule.}"; name="${name%.url}"
+              path=$(git config -f .gitmodules --get "submodule.${name}.path")
+              auth=$(printf '%s\n' "$url" | sed -E "s#^(git@github\.com:|https://github\.com/)#https://x-access-token:${TOKEN}@github.com/#")
+              https=$(printf '%s\n' "$url" | sed -E 's#^git@github\.com:#https://github.com/#')
+              git -c "submodule.${name}.url=${auth}" submodule update --init --depth 1 "$path"
+              git config "submodule.${name}.url" "$https"
+            done
+
+      - name: Détecteur introuvable ?
+        run: |
+          test -f "_agents/scripts/checkers/${{ inputs.checker }}.sh" || {
+            echo "::error::détecteur introuvable : scripts/checkers/${{ inputs.checker }}.sh"
+            exit 1
+          }
+
+      - name: Check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DISPATCH_WORKFLOW: ${{ inputs.dispatch_workflow }}
+        run: bash "_agents/scripts/checkers/${{ inputs.checker }}.sh"

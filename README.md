@@ -16,6 +16,84 @@ commentaire de bilan).
 Voir [`ARCHITECTURE.md`](ARCHITECTURE.md) pour le détail et l'historique des
 décisions.
 
+## Les deux parcours, de bout en bout
+
+Vue d'ensemble avant le détail de chaque pièce (sections suivantes). Deux
+pipelines partagent la même colonne vertébrale — détection gratuite → file
+d'attente → agent Albert → verrou global — mais divergent sur ce que l'agent
+fait vraiment.
+
+### Migration
+
+```
+1. check.yml (cron ou manuel) → checkers/template-migration.sh — gratuit
+   · classe chaque pilote .tex : MISSING / LEGACY / conforme
+   → ouvre une issue "[migration] <fichier>", label template-migration
+
+2. queue.yml (cron, verrou agent-albert-global) → queue-next.sh
+   · prend la plus ancienne issue template-migration, tous dépôts confondus
+   · gh workflow run agent-migrate-latex.yml -f target=<fichier>
+   · attend la fin (tient le verrou pendant tout le run)
+
+3. agent-migrate-latex.yml → agent.yml (role: latex-template-migrator)
+   · scaffold.sh : nouvelle issue "[agent] Migration <fichier>", branche,
+     PR Draft "Closes #<cette issue>"
+   · run-opencode.sh : OpenCode + Albert migre, compile, commite
+   · finalize.sh : bilan en commentaire de PR, reste en Draft
+
+4. queue-next.sh reprend la main
+   · PR trouvée → ferme l'issue de détection (#1), succès
+   · sinon → label agent:failed sur l'issue de détection, pas de retentative
+
+5. Relecture humaine de la PR Draft (latex-pr.yml compile dès "Ready for
+   review"), merge quand ça va.
+```
+
+### Conventions
+
+Même colonne vertébrale, mais **le script ne décide jamais** — il ouvre un
+candidat, un agent tranche.
+
+```
+1. check.yml → checkers/conventions.sh — gratuit, enveloppe
+   conventions/bin/verifier
+   → ouvre/actualise un candidat "[conventions] <fichier>",
+     label conventions-candidate, corps marqué "⚠️ candidat brut, pas relu"
+   · plus aucune trouvaille brute au run suivant → ferme le candidat seul
+
+2. queue.yml — MÊME file, MÊME verrou que la migration
+   · fusionne migration + conventions, prend le plus ancien des deux
+     toutes catégories confondues
+   · gh workflow run agent-review-conventions.yml
+       -f target=<fichier> -f issue=<numéro du candidat>
+
+3. agent-review-conventions.yml → agent.yml (role: conventions-reviewer)
+   · relit le FICHIER RÉEL autour de chaque ligne signalée par verifier
+   · juge : confirmée / faux positif / exception légitime (P2 tolère les
+     séries d'exercices, P5 accepte des remarques groupées légitimes…)
+   · modifie l'issue candidate elle-même — jamais le contenu du cours :
+     - rien de confirmé → ferme avec le motif de chaque rejet
+     - au moins un point confirmé → réécrit le corps (juste les points
+       retenus), swap le label conventions-candidate → conventions-style,
+       laisse ouverte
+
+4. queue-next.sh reprend la main
+   · état de l'issue candidate changé (fermée ou promue) → succès
+   · toujours conventions-candidate → agent:failed, pas de retentative
+
+5. Les issues conventions-style qui restent sont le vrai backlog (jugé,
+   pas brut) — à traiter à la main, pas d'auto-fix branché.
+```
+
+### Ce qui distingue vraiment les deux
+
+| | Migration | Conventions |
+|---|---|---|
+| Le script seul peut-il conclure ? | Oui — macro `my*` présente ou non, fait binaire | Non, jamais — d'où le passage obligé par l'agent |
+| L'agent modifie… | le contenu du cours | seulement l'issue (jamais le contenu) |
+| Critère de succès de la file | une PR est ouverte | l'issue candidate a changé d'état |
+| Résultat pour l'humain | une PR Draft à relire | une issue triée (fermée ou confirmée) à traiter |
+
 ## Séquence d'un run
 
 1. `scaffold.sh` — issue (assignée `ocots`, label `agent`), branche
@@ -94,14 +172,162 @@ Passe l'id exact en input `model`.
 ## Arborescence
 
 ```
-.github/workflows/agent.yml   workflow réutilisable
+.github/workflows/agent.yml   workflow réutilisable (issue → PR → travail → bilan)
+.github/workflows/check.yml   workflow réutilisable, générique (détecteurs, pas de modèle)
+.github/workflows/queue.yml   tourne ICI (pas réutilisable) — verrou global, déclenche agent-migrate-latex.yml à distance
 scripts/scaffold.sh           couche A — mise en place du chantier
 scripts/run-opencode.sh       couche B — assemble AGENTS.md + lance OpenCode
 scripts/finalize.sh           couche A — clôture (suivi + bilan)
+scripts/checkers/             un détecteur par fichier (template-migration, conventions, …)
+scripts/queue-next.sh         dépile une issue de la file, déclenche, attend
 config/opencode.json          provider Albert, permissions
 config/AGENTS.base.md         socle commun injecté dans AGENTS.md
+config/course-repos.txt       dépôts de cours surveillés par la file d'attente
 roles/                        un fichier par rôle
 ```
+
+## Détecteurs — ce qui n'est pas (encore) conforme
+
+`check.yml` (workflow réutilisable, générique) exécute **un** détecteur
+`scripts/checkers/<checker>.sh` sur un dépôt de cours et ouvre une issue par
+infraction trouvée. **Scripts déterministes, pas des agents** : `grep` /
+Python, aucun appel modèle, aucun budget Albert consommé — tournent sur un
+cron sans y penser. Un détecteur = un fichier, même principe que `roles/` pour
+les agents : ajouter un détecteur, c'est écrire `scripts/checkers/<nom>.sh`,
+rien d'autre à toucher dans `check.yml`.
+
+| Checker | Détecte | Label | Source |
+|---|---|---|---|
+| `template-migration` | document `.tex` pas (ou pas complètement) migré vers le template `ocots` | `template-migration` | extrait `template/tex/ocots-compat.sty` à chaque run |
+| `conventions` | **candidats bruts** (pas un verdict) aux règles mécaniques de `ocots-conventions` (P2, P3, P5, C4 au 2026-09-11) | `conventions-candidate` | enveloppe `conventions/bin/verifier` |
+
+### `template-migration`
+
+Deux statuts : `MISSING` (pilote sans `\usepackage[...]{ocots}` — jamais
+migré) / `LEGACY` (pilote migré, mais lui ou sa chaîne `\input` utilise
+encore un nom de `ocots-compat.sty`). La liste des noms « legacy » est
+extraite du fichier à chaque run, pas codée en dur : il maigrit au fil des
+migrations, le détecteur se resserre tout seul. Chaque issue contient le
+statut, les macros en cause, et la commande prête à lancer
+(`gh workflow run agent-migrate-latex.yml -f target=...`).
+
+⚠️ Une ligne de `ocots-compat.sty` ne se supprime que quand **plus aucun
+document, dans aucun dépôt de cours existant**, n'utilise ce nom — et un
+cours pas encore créé ne peut de toute façon pas être scanné. Ce n'est donc
+jamais *prouvable*, seulement *mesurable sur l'existant* : la suppression
+reste une décision de dépréciation humaine, pas un geste automatique. Ce qui
+est automatisable, en revanche, c'est d'empêcher la régression : qu'un
+document **neuf** réintroduise un nom `my*` (à outiller en CI si besoin,
+séparément de ce détecteur).
+
+### `conventions`
+
+Enveloppe `conventions/bin/verifier` : regroupe ses trouvailles par fichier,
+une issue **candidate** par fichier (pas par ligne, label
+`conventions-candidate`). **Idempotent** — un candidat existant est mis à
+jour (pas dupliqué), et se ferme tout seul (avec un commentaire) si le
+fichier n'a plus de trouvaille brute au run suivant.
+
+**Ce script n'affirme jamais qu'il y a une vraie infraction.** `verifier`
+le dit lui-même (`ocots-conventions/README.md`, § « Ce que l'outil ne fait
+pas ») : il rate des choses, il signale parfois du correct, zéro trouvaille
+ne certifie pas la conformité. Chaque candidat est donc explicitement
+marqué comme non relu, et **le jugement est délégué à un agent**
+(`conventions-reviewer`, voir « File d'attente » plus bas) — jamais
+transformé en verdict par ce seul script. Nécessite le sous-module
+`conventions/` ; s'il est absent, le checker sort proprement sans rien
+faire (`::warning::`).
+
+### Appel depuis un dépôt de cours
+
+Un seul cron, un job par détecteur activé (le job « générique » ci-dessous
+sert de modèle pour en ajouter d'autres) :
+
+```yaml
+name: Check — conformité (template + conventions)
+on:
+  schedule: [{ cron: "0 6 * * 1" }]
+  workflow_dispatch: {}
+permissions: { contents: read, issues: write }
+jobs:
+  template-migration:
+    uses: ocourses/agents/.github/workflows/check.yml@main
+    with: { checker: template-migration }
+    secrets:
+      AGENTS_READ_TOKEN: ${{ secrets.AGENTS_READ_TOKEN }}
+  conventions:
+    uses: ocourses/agents/.github/workflows/check.yml@main
+    with: { checker: conventions }
+    secrets:
+      AGENTS_READ_TOKEN: ${{ secrets.AGENTS_READ_TOKEN }}
+```
+
+## File d'attente — déclenchement automatique
+
+`queue.yml` + `scripts/queue-next.sh` : dépile la plus ancienne tâche
+éligible, **tous dépôts de `config/course-repos.txt` confondus**, et
+l'envoie au bon workflow — sans intervention humaine. Deux natures de
+tâches, deux workflows cibles :
+
+| Label source | Dispatché vers | Rôle | Ce que « succès » veut dire |
+|---|---|---|---|
+| `template-migration` | `agent-migrate-latex.yml` | `latex-template-migrator` | une PR `[agent] Migration <fichier>` est ouverte |
+| `conventions-candidate` | `agent-review-conventions.yml` | `conventions-reviewer` | l'issue candidate n'est plus `conventions-candidate` (fermée ou promue `conventions-style`) |
+
+**Le checker `conventions` ne juge jamais** — il l'a dit lui-même
+(`ocots-conventions/README.md`, § « Ce que l'outil ne fait pas ») : c'est un
+signal mécanique, pas un verdict, il rate des choses et en signale à tort.
+Chaque candidat passe donc par un **agent** (`conventions-reviewer`) qui
+relit le fichier et décide — confirme (`conventions-style`, reste ouverte
+pour action humaine) ou rejette (ferme, avec le motif par ligne). Cet agent
+ne modifie jamais le contenu du cours, seulement l'issue.
+
+Parce que `conventions-reviewer` appelle Albert comme n'importe quel autre
+agent, il passe par **la même file, le même verrou** que les migrations —
+pas de cron séparé, pas de double dépense de budget.
+
+### Le verrou global — pourquoi un nouveau workflow, pas juste `concurrency:`
+
+`agent.yml` est un *workflow réutilisable* : sa `concurrency: group:
+agent-albert-${{ github.repository }}` s'évalue dans le contexte du dépôt
+**appelant**. GitHub Actions ne fait **pas** interagir deux groupes de
+concurrency situés dans deux dépôts différents, même identiques par leur nom
+— deux dépôts de cours peuvent donc consommer Albert en même temps.
+
+`queue.yml` contourne ça en ne bougeant pas : il tourne **toujours dans
+`ocourses/agents`** (jamais en `workflow_call`), déclenche
+`agent-migrate-latex.yml` sur le dépôt cible via `gh workflow run`, puis
+**attend la fin** (`gh run watch`) avant de rendre la main. Tant qu'un tick
+n'est pas fini, `concurrency: group: agent-albert-global,
+cancel-in-progress: false` retient le suivant en file — cette fois, pour de
+vrai, puisque tous les ticks sont des runs du *même* workflow dans le *même*
+dépôt.
+
+### Mise en place (une fois)
+
+1. **PAT fine-grained** (GitHub → Settings → Developer settings → Fine-grained
+   tokens), portée sur les dépôts de `config/course-repos.txt` :
+   `Issues` (lire/écrire), `Actions` (lire/écrire), `Contents` (lire),
+   `Metadata` (lire, obligatoire). Poser comme secret **`AGENTS_DISPATCH_TOKEN`
+   sur `ocourses/agents` uniquement** — pas besoin de le dupliquer par dépôt
+   de cours, contrairement à `ALBERT_API_KEY` / `AGENTS_READ_TOKEN` : ce PAT
+   est utilisé *depuis* `ocourses/agents`, jamais injecté ailleurs.
+2. **`config/course-repos.txt`** — un dépôt par ligne, seulement ceux qui ont
+   déjà `agent.yml` + `agent-migrate-latex.yml` + `agent-review-conventions.yml`
+   + `ALBERT_API_KEY` (sinon le déclenchement échoue proprement, avec un
+   commentaire d'erreur sur l'issue). Un cours pas encore embarqué : on
+   l'ajoute plus tard, rien à changer ailleurs.
+3. Sans le secret, `queue.yml` échoue vite et clairement (`::error::`) — pas
+   de comportement silencieux.
+
+### Comportement en échec
+
+Un run qui échoue — ou, selon le type de tâche, dont la PR n'est pas
+retrouvée (migration) ou dont l'issue candidate n'a pas changé d'état
+(conventions) — **n'est pas retenté automatiquement** : l'issue reçoit le
+label `agent:failed` et un commentaire avec le lien du run. Retirer le label
+la remet en file. Ce choix délibéré évite qu'une cible cassée ne boucle en
+silence sur le budget Albert.
 
 ## Rôles fournis
 
@@ -111,6 +337,7 @@ roles/                        un fichier par rôle
 | `exercise-corrector` | rédige les corrigés d'un TD |
 | `course-author` | complète / rédige une section de poly |
 | `reviewer` | relit et produit un rapport, sans réécrire |
+| `conventions-reviewer` | trie un candidat `conventions-candidate` (sortie brute de `conventions/bin/verifier`) : confirme, rejette ou complète — jamais de réécriture |
 
 ## Ajouter un rôle
 
