@@ -29,9 +29,18 @@ echo "Rôle : $ROLE_FILE"
 
 # --- fichiers de run non suivis (au cas où le .gitignore du dépôt ne les couvre pas) ---
 mkdir -p _agent_logs
-printf '%s\n' AGENTS.md opencode.json .opencode/ _agent_logs/ _agents/ \
+printf '%s\n' opencode.json .opencode/ _agent_logs/ _agents/ \
   '**/build/' '*.synctex.gz' \
   >> .git/info/exclude
+
+# AGENTS.md est un cas à part : dans les dépôts de cours, c'est un fichier
+# RÉEL déjà suivi (contenu antérieur à cette base d'agents). .gitignore et
+# .git/info/exclude ne s'appliquent qu'aux fichiers non suivis — ils ne
+# cachent jamais une modification d'un fichier déjà commité. On écrase son
+# contenu ci-dessous pour que l'agent le lise comme instructions de run,
+# mais --skip-worktree fait ignorer cette modification locale par git status
+# / diff / add -A / commit -a, quel que soit le commit que fait l'agent.
+git update-index --skip-worktree AGENTS.md 2>/dev/null || true
 
 # --- install OpenCode (épinglé) ---
 npm install -g "opencode-ai@${OPENCODE_VERSION}"
