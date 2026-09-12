@@ -172,9 +172,10 @@ Passe l'id exact en input `model`.
 ## Arborescence
 
 ```
-.github/workflows/agent.yml   workflow réutilisable (issue → PR → travail → bilan)
-.github/workflows/check.yml   workflow réutilisable, générique (détecteurs, pas de modèle)
-.github/workflows/queue.yml   tourne ICI (pas réutilisable) — verrou global, déclenche agent-migrate-latex.yml à distance
+.github/workflows/agent.yml      workflow réutilisable (issue → PR → travail → bilan)
+.github/workflows/check.yml     workflow réutilisable, générique (détecteurs, pas de modèle)
+.github/workflows/latex-pr.yml  workflow réutilisable (compilation LaTeX sur PR non-Draft)
+.github/workflows/queue.yml     tourne ICI (pas réutilisable) — verrou global, déclenche agent-migrate-latex.yml à distance
 scripts/scaffold.sh           couche A — mise en place du chantier
 scripts/run-opencode.sh       couche B — assemble AGENTS.md + lance OpenCode
 scripts/finalize.sh           couche A — clôture (suivi + bilan)
@@ -261,6 +262,33 @@ jobs:
     secrets:
       AGENTS_READ_TOKEN: ${{ secrets.AGENTS_READ_TOKEN }}
 ```
+
+## Compilation LaTeX sur PR (`latex-pr.yml`)
+
+Workflow réutilisable : compile les documents `.tex` touchés par une PR (une
+PR d'agent ou une PR humaine), poste le résultat en commentaire, joint les
+PDF/logs en artefact. Ne tourne que sur PR **non-Draft** — centralisé ici
+depuis (ocourses/agents#2) parce qu'il était dupliqué au caractère près dans
+chaque dépôt de cours.
+
+```yaml
+name: Compilation LaTeX (PR)
+on:
+  pull_request:
+    types: [synchronize, ready_for_review, reopened]
+    paths: ["**/*.tex", "**/*.sty", "**/*.cls", "**/.latexmkrc", ".gitmodules"]
+permissions: { contents: read, pull-requests: write }
+jobs:
+  compile:
+    if: github.event.pull_request.draft == false
+    uses: ocourses/agents/.github/workflows/latex-pr.yml@main
+    secrets:
+      AGENTS_READ_TOKEN: ${{ secrets.AGENTS_READ_TOKEN }}
+```
+
+Le déclencheur (`on: pull_request`) et la condition Draft restent dans le
+dépôt appelant : un workflow `workflow_call` ne peut pas être déclenché
+directement par un événement `pull_request`.
 
 ## File d'attente — déclenchement automatique
 

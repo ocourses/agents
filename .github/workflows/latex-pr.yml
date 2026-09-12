@@ -1,0 +1,189 @@
+name: Compilation LaTeX (PR)
+
+# Workflow RÉUTILISABLE : compile les documents .tex touchés par une PR
+# (directement ou via un \input), poste le résultat en commentaire et
+# **joint les PDF produits en artefact**. Centralisé ici parce qu'il était
+# dupliqué au caractère près dans chaque dépôt de cours (même genre de
+# généricité que check.yml / agent.yml, mais copié-collé au lieu d'être
+# partagé) — voir ocourses/agents#2.
+#
+# Ne tourne que sur les PR **non-Draft** (condition posée dans le dispatcher
+# du dépôt appelant, pas ici : `workflow_call` ne peut pas être déclenché
+# directement par `pull_request`). latexmk tourne dans le conteneur
+# ghcr.io/xu-cheng/texlive-full via `docker run` : le job lui-même est sur
+# ubuntu-latest, seul TeX Live est conteneurisé. Aucun script partagé
+# d'`ocourses/agents` référencé ici — pas besoin de checkout `_agents`.
+#
+# Le dépôt appelant fournit :
+#
+#   on:
+#     pull_request:
+#       types: [synchronize, ready_for_review, reopened]
+#       paths: ["**/*.tex", "**/*.sty", "**/*.cls", "**/.latexmkrc", ".gitmodules"]
+#   permissions: { contents: read, pull-requests: write }
+#   jobs:
+#     compile:
+#       if: github.event.pull_request.draft == false
+#       uses: ocourses/agents/.github/workflows/latex-pr.yml@main
+#       secrets:
+#         AGENTS_READ_TOKEN: ${{ secrets.AGENTS_READ_TOKEN }}
+
+on:
+  workflow_call:
+    secrets:
+      AGENTS_READ_TOKEN:
+        required: true
+
+concurrency:
+  group: latex-pr-${{ github.repository }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  TEXLIVE_IMAGE: ghcr.io/xu-cheng/texlive-full:latest
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout de la PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Sous-module template (PAT lecture)
+        env:
+          TOKEN: ${{ secrets.AGENTS_READ_TOKEN }}
+        run: |
+          set -eu
+          test -f .gitmodules || exit 0
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config -f .gitmodules --get-regexp '^submodule\..*\.url$' \
+          | while read -r key url; do
+              name="${key#submodule.}"; name="${name%.url}"
+              path=$(git config -f .gitmodules --get "submodule.${name}.path")
+              https=$(printf '%s\n' "$url" | sed -E 's#^(git@github\.com:|https://github\.com/)#https://github.com/#')
+              auth=$(printf '%s\n' "$https" | sed -E "s#^https://github\.com/#https://x-access-token:${TOKEN}@github.com/#")
+              git -c "submodule.${name}.url=${auth}" submodule update --init --depth 1 "$path"
+              git config "submodule.${name}.url" "$https"
+            done
+
+      - name: Documents à compiler
+        id: docs
+        run: |
+          set -eu
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          changed=$(git diff --name-only "$base" "$head" \
+                    | grep -E '\.(tex|sty|cls)$|\.latexmkrc$' || true)
+
+          # Fichiers « pilotes » = .tex avec \documentclass, hors template/.
+          mains=$(grep -rlZ --include='*.tex' '\\documentclass' . 2>/dev/null \
+                  | tr '\0' '\n' | sed 's#^\./##' | grep -v '^template/' || true)
+
+          # Un pilote est à compiler si un fichier modifié est : lui-même, dans
+          # son arborescence, ou tiré par un \input / \include (match sur le
+          # nom de base sans extension).
+          : > docs.txt
+          for m in $mains; do
+            mdir=$(dirname "$m")
+            hit=0
+            for c in $changed; do
+              cbase=$(basename "$c"); cstem="${cbase%.tex}"
+              case "$c" in
+                "$m") hit=1;;
+                "$mdir"/*) hit=1;;
+                *.tex)
+                  grep -qE "\\\\(input|include|subfile)\{[^}]*${cstem}(\.tex)?\}" "$m" 2>/dev/null && hit=1;;
+              esac
+              [ "$hit" = 1 ] && break
+            done
+            [ "$hit" = 1 ] && echo "$m" >> docs.txt
+          done
+
+          sort -u -o docs.txt docs.txt
+          echo "Documents à compiler :"
+          sed 's/^/  - /' docs.txt || true
+          echo "count=$(grep -c . docs.txt || true)" >> "$GITHUB_OUTPUT"
+
+      - name: Compilation (TeX Live conteneurisé)
+        if: steps.docs.outputs.count != '0'
+        id: build
+        run: |
+          set -u
+          docker pull -q "$TEXLIVE_IMAGE"
+          rc=0
+          : > report.md
+          mkdir -p _artifacts
+          {
+            echo "## Compilation LaTeX"
+            echo
+          } >> report.md
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            dir=$(dirname "$f"); bse=$(basename "$f")
+            echo "::group::latexmk $f"
+            if docker run --rm -v "$PWD":/w -w "/w/$dir" "$TEXLIVE_IMAGE" \
+                 latexmk -pdf -interaction=nonstopmode -halt-on-error -file-line-error "$bse"; then
+              echo "- ✅ \`$f\`" >> report.md
+            else
+              rc=1
+              echo "- ❌ \`$f\`" >> report.md
+              # aux_dir des .latexmkrc du dépôt = build/ : chercher le log là aussi
+              log=""
+              for c in "$dir/build/${bse%.tex}.log" "$dir/${bse%.tex}.log"; do
+                [ -f "$c" ] && { log="$c"; break; }
+              done
+              if [ -n "$log" ]; then
+                {
+                  echo "<details><summary>Erreurs — <code>$f</code></summary>"
+                  echo; echo '```'
+                  grep -E ':[0-9]+:|^!|^l\.[0-9]+|Undefined control|Runaway|Missing|Not in outer|Emergency stop|.*Error' "$log" | head -60 || true
+                  echo '```'; echo "</details>"
+                } >> report.md
+                cp "$log" "_artifacts/$(echo "${f%.tex}.log" | tr / -)"
+              fi
+            fi
+            for c in "$dir/${bse%.tex}.pdf" "$dir/build/${bse%.tex}.pdf"; do
+              [ -f "$c" ] && { cp "$c" "_artifacts/$(echo "${f%.tex}.pdf" | tr / -)"; break; }
+            done
+            echo "::endgroup::"
+          done < docs.txt
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          cat report.md
+
+      - name: Artefact (PDF + logs)
+        if: steps.docs.outputs.count != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: latex-pr-${{ github.event.pull_request.number }}
+          path: _artifacts/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Commentaire de PR
+        if: steps.docs.outputs.count != '0'
+        env:
+          TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          body = open("report.md").read().rstrip()
+          body += f"\n\n📎 PDF et logs : [artefact du run]({os.environ['RUN_URL']}#artifacts)"
+          req = urllib.request.Request(
+              f"https://api.github.com/repos/{os.environ['REPO']}/issues/{os.environ['PR']}/comments",
+              data=json.dumps({"body": body}).encode(),
+              method="POST",
+              headers={"Authorization": f"Bearer {os.environ['TOKEN']}",
+                       "Accept": "application/vnd.github+json"})
+          urllib.request.urlopen(req)
+          print("commentaire posté")
+          PY
+
+      - name: Statut
+        if: steps.docs.outputs.count != '0' && steps.build.outputs.rc != '0'
+        run: exit 1
