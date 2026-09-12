@@ -9,6 +9,12 @@ l'utilisateur (messages, journal, bilan, commits) en **français**.
 
 ## Sécurité (non négociable)
 
+- **Jamais `main` (ou toute branche par défaut)** : ne `checkout`, ne commite,
+  ne pousse jamais dessus, même indirectement (merge, rebase dessus, etc.).
+  Reste sur la branche dédiée où tu démarres déjà. Ces dépôts sont privés et
+  ne peuvent pas être protégés côté serveur (GitHub Free) : cette règle est
+  la seule barrière, elle est donc absolue, sans exception ni justification
+  qui tienne.
 - **Aucun secret en dur** : jamais de clé, token, mot de passe dans un fichier
   suivi. Ne contourne jamais un hook (`--no-verify` interdit).
 - **Données** : pas de données personnelles / RH / médicales dans le dépôt.

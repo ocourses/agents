@@ -80,6 +80,28 @@ jobs:
     name: "Agent · ${{ inputs.role }}"
     runs-on: ubuntu-latest
     steps:
+      # Vigie main (avant) — l'agent travaille avec un accès shell complet et
+      # un remote déjà authentifié en écriture. Rien ne l'empêche
+      # TECHNIQUEMENT de pousser directement sur la branche par défaut au
+      # lieu de la sienne (bug, confusion, instruction adverse cachée dans un
+      # fichier qu'il lit) ; ces dépôts sont privés donc pas protégeables côté
+      # serveur (GitHub Free — voir README, section Sécurité). Cette paire de
+      # steps (ici + tout en bas) est le seul filet : elle ne PRÉVIENT rien,
+      # elle détecte après coup et alerte bruyamment.
+      - name: Vigie main (avant)
+        id: main_before
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          base="${{ inputs.base_branch }}"
+          [ -n "$base" ] || base="$(gh repo view "$REPO" --json defaultBranchRef -q .defaultBranchRef.name)"
+          sha="$(gh api "repos/$REPO/commits/$base" --jq .sha)"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Surveillé : $base @ $sha"
+
       - name: Vérifier les secrets
         env:
           ALBERT: ${{ secrets.ALBERT_API_KEY }}
@@ -190,3 +212,39 @@ jobs:
           path: _agent_logs/
           retention-days: 14
           if-no-files-found: ignore
+
+      - name: Vigie main (après)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_URL: "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: |
+          set -euo pipefail
+          base="${{ steps.main_before.outputs.base }}"
+          before="${{ steps.main_before.outputs.sha }}"
+          [ -n "$base" ] && [ -n "$before" ] || { echo "::warning::vigie main non armée (étape 'avant' n'a pas produit de sortie) — ignorée."; exit 0; }
+          after="$(gh api "repos/$REPO/commits/$base" --jq .sha)"
+          if [ "$after" = "$before" ]; then
+            echo "$base inchangé pendant ce run ($before) — OK."
+            exit 0
+          fi
+          author="$(gh api "repos/$REPO/commits/$after" --jq '.commit.author.name')"
+          if [ "$author" = "ocourses-agent" ]; then
+            echo "::error::ALERTE — $base a bougé pendant ce run ($before -> $after), dernier commit signé ocourses-agent : l'agent a probablement poussé dessus directement."
+            gh label create agent:failed --repo "$REPO" --color b60205 \
+              --description "Run en échec — vérifier avant de remettre en file" 2>/dev/null || true
+            tmp_body="$(mktemp)"
+            printf '%s\n' \
+              "Détecté par la vigie post-run : \`$base\` est passé de \`$before\` à \`$after\` pendant ce run, et le dernier commit est signé \`ocourses-agent\` — pas une fusion humaine normale." \
+              "" \
+              "**À vérifier immédiatement** : \`git log $before..$after\` sur \`$base\`, et envisager un revert si le contenu n'a pas été relu." \
+              "" \
+              "Run : $RUN_URL" \
+              > "$tmp_body"
+            gh issue create --repo "$REPO" --label agent:failed \
+              --title "🚨 Agent a poussé sur $base (run ${{ github.run_id }})" \
+              --body-file "$tmp_body" >/dev/null || echo "::warning::alerte critique mais création d'issue impossible (permissions ?)"
+          else
+            echo "::notice::$base a bougé pendant ce run ($before -> $after), mais le dernier commit n'est pas signé ocourses-agent — probablement une activité humaine concurrente, sans lien avec ce run."
+          fi
