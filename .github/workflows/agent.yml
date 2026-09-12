@@ -56,12 +56,12 @@ on:
         default: ocots
       link_issue:
         description: >-
-          Numéro d'une AUTRE issue du dépôt appelant à lier nativement à la
-          PR (ligne "Closes #N" supplémentaire, en plus de la propre issue de
-          suivi créée par ce workflow). Sert quand une issue métier existe
-          déjà avant le run (ex. template-migration, conventions-candidate) :
-          sans ça, le seul lien retour vers elle est un commentaire, pas un
-          lien GitHub natif. Vide = aucun lien ajouté.
+          Numéro d'une issue métier qui existe déjà avant le run (ex.
+          template-migration, conventions-candidate, conventions-style).
+          Si fourni, elle sert ELLE-MÊME de fil de suivi — aucune issue
+          dédiée n'est créée en plus — et elle est fermée nativement
+          ("Closes #N") à la fusion de la PR. Vide = une issue de suivi
+          dédiée est créée (rôles sans issue d'origine).
         required: false
         type: string
         default: ""

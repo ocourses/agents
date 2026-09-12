@@ -6,13 +6,12 @@
 # Entrées (variables d'environnement) :
 #   ROLE, TASK, TITLE, ASSIGNEE, BASE_BRANCH, RUN_ID, MODEL, REPO (owner/name)
 #   GH_TOKEN
-#   LINK_ISSUE   optionnel — numéro d'une AUTRE issue du dépôt appelant à
-#                fermer nativement via une ligne "Closes #N" supplémentaire
-#                dans le corps de la PR (en plus de la propre issue de suivi
-#                créée ci-dessous). Sert pour une issue métier qui existe déjà
-#                avant le run (template-migration, conventions-candidate) :
-#                sans ça, le seul lien retour vers elle est un commentaire, pas
-#                un lien GitHub natif visible dans le panneau "Development".
+#   LINK_ISSUE   optionnel — numéro d'une issue métier qui existe déjà avant
+#                le run (template-migration, conventions-candidate,
+#                conventions-style). Si fourni, AUCUNE issue de suivi n'est
+#                créée : LINK_ISSUE sert elle-même de fil de suivi (elle est
+#                fermée nativement via "Closes #N" à la fusion de la PR). Sans
+#                ça, une issue de suivi dédiée est créée comme avant.
 # Sorties ($GITHUB_OUTPUT) : issue, pr, branch, tracking, slug, base_branch
 set -euo pipefail
 
@@ -38,7 +37,18 @@ gh label create agent --repo "$REPO" --color 5319e7 \
   --description "Travail mené par un agent IA" 2>/dev/null || true
 
 # --- issue ---
-cat > "$tmp/issue.md" <<EOF
+# Avec LINK_ISSUE : elle EST le fil de suivi, pas de doublon créé. Sans elle
+# (migration lancée hors file, rôle sans issue d'origine) : on en ouvre une.
+if [ -n "$LINK_ISSUE" ]; then
+  ISSUE="$LINK_ISSUE"
+  gh issue edit "$ISSUE" --repo "$REPO" --add-label agent --add-assignee "$ASSIGNEE" >/dev/null
+  gh issue comment "$ISSUE" --repo "$REPO" --body "$(cat <<EOF
+Prise en charge par le rôle \`$ROLE\` — branche \`$BRANCH\`, run $RUN_URL.
+Suivi (plan + journal + bilan) : \`$TRACKING\`.
+EOF
+)" >/dev/null
+else
+  cat > "$tmp/issue.md" <<EOF
 **Rôle :** \`$ROLE\`
 
 **Tâche :**
@@ -52,9 +62,10 @@ $TASK
 
 _Ouverte automatiquement par la base d'agents (\`ocourses/agents\`)._
 EOF
-ISSUE_URL="$(gh issue create --repo "$REPO" --title "[agent] $TITLE" \
-  --body-file "$tmp/issue.md" --label agent --assignee "$ASSIGNEE")"
-ISSUE="${ISSUE_URL##*/}"
+  ISSUE_URL="$(gh issue create --repo "$REPO" --title "[agent] $TITLE" \
+    --body-file "$tmp/issue.md" --label agent --assignee "$ASSIGNEE")"
+  ISSUE="${ISSUE_URL##*/}"
+fi
 
 # --- branche + fichier de suivi + commit dummy ---
 git config user.name  "ocourses-agent"
@@ -96,17 +107,11 @@ git commit -m "chore(agent): initialise le suivi de $ROLE (#$ISSUE)"
 git push -u origin "$BRANCH"
 
 # --- PR Draft ---
-# Une 2e ligne "Closes #N" est autorisée par GitHub et ferme les deux issues
-# indépendamment à la fusion — l'issue de suivi ci-dessus ET, si fournie,
-# l'issue métier d'origine (LINK_ISSUE).
-link_line=""
-if [ -n "$LINK_ISSUE" ]; then
-  link_line="Closes #$LINK_ISSUE
-"
-fi
+# LINK_ISSUE vaut déjà ISSUE ci-dessus (pas de doublon) : une seule ligne
+# "Closes #N" suffit, elle ferme l'issue métier d'origine à la fusion.
 cat > "$tmp/pr.md" <<EOF
 Closes #$ISSUE
-${link_line}
+
 **Rôle :** \`$ROLE\`
 **Tâche :** $TASK
 
