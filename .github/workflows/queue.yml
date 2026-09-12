@@ -17,14 +17,27 @@ name: File d'attente — migrations (verrou global Albert)
 # Contents + Metadata en lecture). Voir README.md.
 
 on:
-  # Décalé de 7 min (pas *:00/:15/:30/:45) : GitHub documente une charge plus
-  # forte sur les runners aux horaires ronds, où tout le monde programme son
-  # cron — les schedules exacts y sont davantage sujets au retard/à l'oubli.
-  # Constaté en réel : 4 créneaux */15 consécutifs manqués après le premier
-  # merge, aucune autre anomalie détectable (workflow state: active, sur
-  # main, secret présent — le déclenchement manuel fonctionnait, lui).
+  # ATTENTION — le commit qui modifie ce cron DOIT être authored par un compte
+  # ayant accès au dépôt (ici ocots). GitHub attribue chaque run `schedule` à
+  # l'utilisateur qui a modifié la ligne `cron:` en dernier sur la branche par
+  # défaut ; si ce compte n'a pas accès au dépôt, le schedule n'est JAMAIS
+  # déclenché — aucune erreur, aucun run, nulle part.
+  #
+  # C'est exactement ce qui s'est produit : fb6dd74 et 9c5fc29 étaient authored
+  # « Claude <noreply@anthropic.com> », que GitHub mappe sur github.com/claude,
+  # compte tiers en `permission: none` sur ce dépôt privé. Neuf créneaux
+  # consécutifs manqués sur deux expressions cron différentes, alors que tout
+  # le reste était sain (state: active, sur main, Actions activé, quota OK) et
+  # que le workflow_dispatch marchait — lui est attribué à qui le lance.
+  #
+  # Donc : ne jamais commiter ce fichier en tant que bot. Le trailer
+  # Co-Authored-By est sans effet sur l'attribution ; c'est le champ author qui
+  # compte.
+  #
+  # Minutes décalées des horaires ronds : GitHub documente une charge plus
+  # forte à *:00/:15/:30/:45, où les schedules sont plus sujets au retard.
   schedule:
-    - cron: "7,22,37,52 * * * *"
+    - cron: "3,18,33,48 * * * *"
   workflow_dispatch: {}
 
 concurrency:
