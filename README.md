@@ -85,8 +85,22 @@ candidat, un agent tranche.
    · état de l'issue candidate changé (fermée ou promue) → succès
    · toujours conventions-candidate → agent:failed, pas de retentative
 
-5. Les issues conventions-style qui restent sont le vrai backlog (jugé,
-   pas brut) — à traiter à la main, pas d'auto-fix branché.
+5. queue.yml reprend une issue conventions-style (verdict confirmé) — MÊME
+   file, MÊME verrou, aucun cron séparé
+   · gh workflow run agent-fix-conventions.yml
+       -f target=<fichier> -f issue=<numéro de l'issue conventions-style>
+
+6. agent-fix-conventions.yml → agent.yml (role: conventions-fixer)
+   · relit l'issue conventions-style (verdicts déjà rendus, pas la sortie
+     brute) et le remède documenté par ocots-conventions pour chaque règle
+   · corrige UNIQUEMENT les points confirmés · un choix d'auteur non
+     tranchable (ex. C2 entre deux formes réellement équivalentes) → laissé
+     en l'état, signalé dans le bilan, pas décidé à sa place
+   · PR Draft, liée nativement à l'issue conventions-style (link_issue)
+
+7. queue-next.sh reprend la main — même mécanique que la migration : PR
+   trouvée → ferme l'issue conventions-style, succès ; sinon → agent:failed.
+   Relecture humaine de la PR avant fusion, comme toujours.
 ```
 
 ### Ce qui distingue vraiment les deux
@@ -328,13 +342,14 @@ directement par un événement `pull_request`.
 
 `queue.yml` + `scripts/queue-next.sh` : dépile la plus ancienne tâche
 éligible, **tous dépôts de `config/course-repos.txt` confondus**, et
-l'envoie au bon workflow — sans intervention humaine. Deux natures de
-tâches, deux workflows cibles :
+l'envoie au bon workflow — sans intervention humaine. Trois natures de
+tâches, trois workflows cibles :
 
 | Label source | Dispatché vers | Rôle | Ce que « succès » veut dire |
 |---|---|---|---|
 | `template-migration` | `agent-migrate-latex.yml` | `latex-template-migrator` | une PR `[agent] Migration <fichier>` est ouverte |
 | `conventions-candidate` | `agent-review-conventions.yml` | `conventions-reviewer` | l'issue candidate n'est plus `conventions-candidate` (fermée ou promue `conventions-style`) |
+| `conventions-style` | `agent-fix-conventions.yml` | `conventions-fixer` | une PR `[agent] Correction conventions <fichier>` est ouverte |
 
 **Le checker `conventions` ne juge jamais** — il l'a dit lui-même
 (`ocots-conventions/README.md`, § « Ce que l'outil ne fait pas ») : c'est un
@@ -472,10 +487,11 @@ adaptant `<repo>` et `<issue>` :
 > 2. Réclame : `bash scripts/claim-issue.sh claim <repo> <issue> "Claude Code
 >    local (Olivier)"`. Si ça échoue, quelqu'un t'a devancé entre les deux
 >    étapes — arrête-toi.
-> 3. Regarde le label présent sur l'issue (`template-migration` ou
->    `conventions-candidate`) et suis les instructions du rôle correspondant
->    (`roles/latex-template-migrator.md` ou `roles/conventions-reviewer.md`
->    dans `ocourses/agents`) — mêmes consignes que l'agent automatisé.
+> 3. Regarde le label présent sur l'issue (`template-migration`,
+>    `conventions-candidate` ou `conventions-style`) et suis les instructions
+>    du rôle correspondant (`roles/latex-template-migrator.md`,
+>    `roles/conventions-reviewer.md` ou `roles/conventions-fixer.md` dans
+>    `ocourses/agents`) — mêmes consignes que l'agent automatisé.
 > 4. Ouvre une PR dont le corps contient `Closes #<issue>` (lien natif
 >    GitHub, fermeture automatique à la fusion).
 > 5. À la fin : succès → `bash scripts/claim-issue.sh release <repo>
@@ -492,6 +508,7 @@ adaptant `<repo>` et `<issue>` :
 | `course-author` | complète / rédige une section de poly |
 | `reviewer` | relit et produit un rapport, sans réécrire |
 | `conventions-reviewer` | trie un candidat `conventions-candidate` (sortie brute de `conventions/bin/verifier`) : confirme, rejette ou complète — jamais de réécriture |
+| `conventions-fixer` | corrige les points **confirmés** d'une issue `conventions-style`, remède documenté par `ocots-conventions` — ne tranche pas un choix d'auteur (ex. C2) |
 
 ## Ajouter un rôle
 

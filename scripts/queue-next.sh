@@ -12,16 +12,22 @@
 # nativement entre dépôts). Un tick = une tâche ; le tick suivant (cron)
 # dépile la suivante.
 #
-# Deux natures de tâches, deux workflows cibles :
+# Trois natures de tâches, trois workflows cibles :
 #
 #   label source              -> workflow                        -> rôle
 #   template-migration        -> agent-migrate-latex.yml          -> latex-template-migrator
 #   conventions-candidate     -> agent-review-conventions.yml     -> conventions-reviewer
+#   conventions-style         -> agent-fix-conventions.yml        -> conventions-fixer
 #
 # `conventions-candidate` (sortie brute de checkers/conventions.sh) n'est
 # JAMAIS traité comme un verdict : l'agent conventions-reviewer relit et
 # décide (confirme -> conventions-style, ou rejette -> ferme). Comme il
 # appelle Albert, il passe par cette même file — pas de traitement à part.
+#
+# `conventions-style` (verdict confirmé, écrit par conventions-reviewer) est
+# ensuite repris par conventions-fixer, qui corrige le texte pour les points
+# confirmés et ouvre une PR — même mécanique de succès que `migration`
+# (recherche de PR par titre, fermeture de l'issue si trouvée).
 #
 # Entrées :
 #   GH_TOKEN            PAT (PAS le github.token par défaut : celui-ci n'a de
@@ -101,6 +107,11 @@ for repo in "${repos[@]}"; do
     --json number,title,createdAt,labels --limit 200 2>/dev/null \
   | jq -c --arg repo "$repo" --arg kind "conventions" \
       '.[] | . + {repo: $repo, kind: $kind}' >> "$tmp/candidates.jsonl" || true
+
+  gh issue list --repo "$repo" --label "conventions-style" --state open \
+    --json number,title,createdAt,labels --limit 200 2>/dev/null \
+  | jq -c --arg repo "$repo" --arg kind "fix" \
+      '.[] | . + {repo: $repo, kind: $kind}' >> "$tmp/candidates.jsonl" || true
 done
 
 jq -s --arg d "$DISPATCHED_LABEL" --arg f "$FAILED_LABEL" '
@@ -124,6 +135,7 @@ title="$(printf '%s' "$pick" | jq -r '.title')"
 case "$kind" in
   migration)    dispatch_workflow="agent-migrate-latex.yml" ;;
   conventions)  dispatch_workflow="agent-review-conventions.yml" ;;
+  fix)          dispatch_workflow="agent-fix-conventions.yml" ;;
   *) echo "::error::nature de tâche inconnue : $kind"; exit 1 ;;
 esac
 target="${title#\[*\] }"
@@ -172,40 +184,53 @@ set -e
 
 # ---------------------------------------------------------------------------
 # Vérification du succès : le critère dépend de la nature de la tâche.
+#
+# migration et fix partagent la même mécanique — l'agent (latex-template-
+# migrator / conventions-fixer) fait le travail directement et ouvre sa PR
+# via scaffold.sh (titre "[agent] <Titre> <cible>", cf. agent-migrate-latex.yml
+# / agent-fix-conventions.yml) : on la retrouve par titre, PR trouvée = succès,
+# l'issue d'origine est fermée (le lien natif link_issue la referait de toute
+# façon à la fusion, mais on ne l'attend pas — même convention que migration).
+# conventions (triage) est différent : l'agent modifie l'issue lui-même,
+# jamais une PR de contenu ; on vérifie son état après coup.
 # ---------------------------------------------------------------------------
 success=0
-if [ "$kind" = "migration" ]; then
-  pr_title="[agent] Migration ${target}"
-  pr_json="$(gh pr list --repo "$repo" --state open --search "in:title \"${pr_title}\"" \
-    --json number,url --limit 5 2>/dev/null || echo '[]')"
-  pr_url="$(printf '%s' "$pr_json" | jq -r '.[0].url // empty')"
-  if [ "$rc" -eq 0 ] && [ -n "$pr_url" ]; then
-    success=1
-    gh issue comment "$number" --repo "$repo" \
-      --body "Run terminé → PR ouverte : $pr_url (reste en **Draft**, relecture humaine avant fusion)." >/dev/null
-    gh issue close "$number" --repo "$repo" --reason completed >/dev/null
-    # Issue fermée : `agent:dispatched` n'a plus d'effet sur l'éligibilité,
-    # mais on le retire quand même pour que `claim-issue.sh status` reste
-    # exact si l'issue est rouverte un jour (revert de la PR, etc.).
-    bash "$SCRIPT_DIR/claim-issue.sh" release "$repo" "$number" >/dev/null
-    echo "OK : $pr_url"
-  fi
-else
-  # conventions-reviewer traite l'issue lui-même (ferme, ou retire le label
-  # conventions-candidate en promouvant conventions-style) : on vérifie son
-  # état après coup, on ne referme/edite rien ici.
-  state_json="$(gh issue view "$number" --repo "$repo" --json state,labels 2>/dev/null || echo '{}')"
-  state="$(printf '%s' "$state_json" | jq -r '.state // "OPEN"')"
-  still_candidate="$(printf '%s' "$state_json" | jq -r '([.labels[]?.name] // []) | index("conventions-candidate") != null')"
-  if [ "$rc" -eq 0 ] && { [ "$state" = "CLOSED" ] || [ "$still_candidate" = "false" ]; }; then
-    success=1
-    # L'issue reste OPEN si promue conventions-style (relecture humaine) :
-    # sans ce release, `agent:dispatched` restait collé pour de bon — bug
-    # constaté en pratique (issues #54, #55) avant ce correctif.
-    bash "$SCRIPT_DIR/claim-issue.sh" release "$repo" "$number" >/dev/null
-    echo "OK : candidat traité par l'agent (état: $state)"
-  fi
-fi
+case "$kind" in
+  migration|fix)
+    if [ "$kind" = "migration" ]; then pr_title="[agent] Migration ${target}"
+    else pr_title="[agent] Correction conventions ${target}"; fi
+    pr_json="$(gh pr list --repo "$repo" --state open --search "in:title \"${pr_title}\"" \
+      --json number,url --limit 5 2>/dev/null || echo '[]')"
+    pr_url="$(printf '%s' "$pr_json" | jq -r '.[0].url // empty')"
+    if [ "$rc" -eq 0 ] && [ -n "$pr_url" ]; then
+      success=1
+      gh issue comment "$number" --repo "$repo" \
+        --body "Run terminé → PR ouverte : $pr_url (reste en **Draft**, relecture humaine avant fusion)." >/dev/null
+      gh issue close "$number" --repo "$repo" --reason completed >/dev/null
+      # Issue fermée : `agent:dispatched` n'a plus d'effet sur l'éligibilité,
+      # mais on le retire quand même pour que `claim-issue.sh status` reste
+      # exact si l'issue est rouverte un jour (revert de la PR, etc.).
+      bash "$SCRIPT_DIR/claim-issue.sh" release "$repo" "$number" >/dev/null
+      echo "OK : $pr_url"
+    fi
+    ;;
+  conventions)
+    # conventions-reviewer traite l'issue lui-même (ferme, ou retire le label
+    # conventions-candidate en promouvant conventions-style) : on vérifie son
+    # état après coup, on ne referme/edite rien ici.
+    state_json="$(gh issue view "$number" --repo "$repo" --json state,labels 2>/dev/null || echo '{}')"
+    state="$(printf '%s' "$state_json" | jq -r '.state // "OPEN"')"
+    still_candidate="$(printf '%s' "$state_json" | jq -r '([.labels[]?.name] // []) | index("conventions-candidate") != null')"
+    if [ "$rc" -eq 0 ] && { [ "$state" = "CLOSED" ] || [ "$still_candidate" = "false" ]; }; then
+      success=1
+      # L'issue reste OPEN si promue conventions-style (relecture humaine) :
+      # sans ce release, `agent:dispatched` restait collé pour de bon — bug
+      # constaté en pratique (issues #54, #55) avant ce correctif.
+      bash "$SCRIPT_DIR/claim-issue.sh" release "$repo" "$number" >/dev/null
+      echo "OK : candidat traité par l'agent (état: $state)"
+    fi
+    ;;
+esac
 
 if [ "$success" -ne 1 ]; then
   bash "$SCRIPT_DIR/claim-issue.sh" fail "$repo" "$number" \
