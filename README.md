@@ -402,6 +402,20 @@ surveille. En contrepartie il suit des **dates**, il ne teste pas la validité
 des clés — un secret ne se teste que depuis le dépôt qui le détient, ce qui
 demanderait un job dans chacun des trois cours.
 
+**Recoupement automatique côté Albert.** Contrairement à GitHub, Albert expose
+l'échéance : `GET /v1/keys/{id}` renvoie un champ `expires` (timestamp Unix,
+`null` si la clé n'expire jamais). C'est pourquoi la dernière colonne du
+fichier porte l'identifiant numérique de la clé — `albert-api-key-automatique
+(#50717)`. Si le secret **facultatif** `ALBERT_API_KEY` est posé sur
+`ocourses/agents`, le job compare chaque date saisie à la date réelle, signale
+les écarts, et **calcule l'alerte sur la date d'Albert** : une date saisie trop
+optimiste ne peut donc plus masquer une échéance imminente. Sans ce secret,
+tout fonctionne à l'identique sur les seules dates du fichier.
+
+Le script ne journalise jamais la réponse d'Albert : `GET /v1/keys/{id}`
+renvoie aussi un champ `value` qui est **la clé en clair**. Seul `expires` en
+est extrait.
+
 Rappel : chaque cours a ses propres `ALBERT_API_KEY` et `AGENTS_READ_TOKEN`
 (valeurs distinctes sous des noms identiques). Il n'y a pas de rotation
 groupée possible, et c'est voulu — une clé compromise sur un cours n'expose
