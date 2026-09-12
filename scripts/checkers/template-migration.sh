@@ -47,10 +47,17 @@ tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 # Environnements : \NewDocumentEnvironment{nom} et \ocotsaliasenv{nom}{...}
 # (on exclut les noms avec '@' : macros internes du fichier de compat,
 # jamais tapées par un auteur de document)
+# `grep` sort 1 (pas une erreur) dès qu'un motif ne trouve rien — ça arrive
+# légitimement : un dépôt de cours peut pointer un sous-module template plus
+# ancien, où telle forme d'alias n'existe pas encore (vu en réel : un sous-
+# module figé avant l'introduction de \NewDocumentEnvironment, quand
+# `mytheorem` n'était qu'un \ocotsaliasenv simple). Sous `set -e -o
+# pipefail`, laisser passer ce 1 tuerait tout le script — chaque motif est
+# donc gardé par `|| true`.
 {
-  grep -oE '\\NewDocumentEnvironment\{[A-Za-z@*]+\}' "$COMPAT" | sed -E 's/.*\{(.*)\}/\1/'
-  grep -oE '\\ocotsaliasenv\{[A-Za-z@*]+\}' "$COMPAT" | sed -E 's/.*\{(.*)\}/\1/'
-} | grep -v '@' | sort -u > "$tmp/envs.txt"
+  grep -oE '\\NewDocumentEnvironment\{[A-Za-z@*]+\}' "$COMPAT" | sed -E 's/.*\{(.*)\}/\1/' || true
+  grep -oE '\\ocotsaliasenv\{[A-Za-z@*]+\}' "$COMPAT" | sed -E 's/.*\{(.*)\}/\1/' || true
+} | { grep -v '@' || true; } | sort -u > "$tmp/envs.txt"
 
 # Commandes : \newcommand{\nom}, \let\nom... et \DeclareRobustCommand{\nom}
 # (ce dernier motif porte à lui seul ~80 alias de macros mathématiques
@@ -58,10 +65,10 @@ tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 # toutes silencieusement, cf. .agents ou le suivi de la PR qui a ajouté cette
 # ligne)
 {
-  grep -oE '\\newcommand\{\\[A-Za-z@]+\}' "$COMPAT" | sed -E 's/.*\{\\(.*)\}/\1/'
-  grep -oE '^\\let\\[A-Za-z@]+' "$COMPAT" | sed -E 's/^\\let\\//'
-  grep -oE '\\DeclareRobustCommand\{\\[A-Za-z@]+\}' "$COMPAT" | sed -E 's/.*\{\\(.*)\}/\1/'
-} | grep -v '@' | sort -u > "$tmp/cmds.txt"
+  grep -oE '\\newcommand\{\\[A-Za-z@]+\}' "$COMPAT" | sed -E 's/.*\{\\(.*)\}/\1/' || true
+  grep -oE '^\\let\\[A-Za-z@]+' "$COMPAT" | sed -E 's/^\\let\\//' || true
+  grep -oE '\\DeclareRobustCommand\{\\[A-Za-z@]+\}' "$COMPAT" | sed -E 's/.*\{\\(.*)\}/\1/' || true
+} | { grep -v '@' || true; } | sort -u > "$tmp/cmds.txt"
 
 n_envs=$(wc -l < "$tmp/envs.txt"); n_cmds=$(wc -l < "$tmp/cmds.txt")
 echo "Noms legacy extraits : $n_envs environnement(s), $n_cmds commande(s)"
@@ -90,7 +97,7 @@ collect_chain() {
   eval "$seen_var=\"\$$seen_var $file\""
   echo "$file"
   local dir; dir="$(dirname "$file")"
-  grep -oE '\\(input|include)\{[^}]+\}' "$file" 2>/dev/null \
+  { grep -oE '\\(input|include)\{[^}]+\}' "$file" 2>/dev/null || true; } \
     | sed -E 's/.*\{(.*)\}/\1/' \
     | while IFS= read -r inc; do
         local incfile="$inc"
