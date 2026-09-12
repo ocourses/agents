@@ -141,13 +141,12 @@ if ! bash "$SCRIPT_DIR/claim-issue.sh" claim "$repo" "$number" "file d'attente a
   exit 0
 fi
 
-if [ "$kind" = "migration" ]; then
-  echo "Déclenchement : $dispatch_workflow -f target=$target sur $repo"
-  gh workflow run "$dispatch_workflow" --repo "$repo" -f "target=$target"
-else
-  echo "Déclenchement : $dispatch_workflow -f target=$target -f issue=$number sur $repo"
-  gh workflow run "$dispatch_workflow" --repo "$repo" -f "target=$target" -f "issue=$number"
-fi
+# Les deux workflows cibles acceptent désormais issue= (numéro de la
+# template-migration / conventions-candidate d'origine) : côté migration,
+# ça permet à agent.yml de fermer nativement cette issue via link_issue
+# (Closes #N dans la PR), plutôt que par le seul commentaire posé plus bas.
+echo "Déclenchement : $dispatch_workflow -f target=$target -f issue=$number sur $repo"
+gh workflow run "$dispatch_workflow" --repo "$repo" -f "target=$target" -f "issue=$number"
 
 sleep 8
 run_json="$(gh run list --repo "$repo" --workflow "$dispatch_workflow" --limit 1 \

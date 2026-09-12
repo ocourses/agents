@@ -32,17 +32,21 @@ fait vraiment.
 
 2. queue.yml (cron, verrou agent-albert-global) → queue-next.sh
    · prend la plus ancienne issue template-migration, tous dépôts confondus
-   · gh workflow run agent-migrate-latex.yml -f target=<fichier>
+   · gh workflow run agent-migrate-latex.yml -f target=<fichier> -f issue=<#1>
    · attend la fin (tient le verrou pendant tout le run)
 
 3. agent-migrate-latex.yml → agent.yml (role: latex-template-migrator)
    · scaffold.sh : nouvelle issue "[agent] Migration <fichier>", branche,
-     PR Draft "Closes #<cette issue>"
+     PR Draft "Closes #<cette issue>" ET "Closes #1" (link_issue = l'issue
+     de détection d'origine, transmise depuis queue-next.sh — lien GitHub
+     natif, visible dans le panneau Development de #1)
    · run-opencode.sh : OpenCode + Albert migre, compile, commite
    · finalize.sh : bilan en commentaire de PR, reste en Draft
 
 4. queue-next.sh reprend la main
-   · PR trouvée → ferme l'issue de détection (#1), succès
+   · PR trouvée → ferme l'issue de détection (#1), succès — indépendamment
+     du lien natif ci-dessus, qui ne referme #1 qu'à la fusion (souvent
+     bien après, une fois la Draft relue)
    · sinon → label agent:failed sur l'issue de détection, pas de retentative
 
 5. Relecture humaine de la PR Draft (latex-pr.yml compile dès "Ready for
@@ -145,6 +149,7 @@ jobs:
 | `agents_ref` | `main` | ref de ce dépôt |
 | `base_branch` | branche par défaut | base de la PR |
 | `assignee` | `ocots` | login assigné aux issue / PR |
+| `link_issue` | *(vide)* | numéro d'une **autre** issue du dépôt appelant à fermer nativement (`Closes #N` supplémentaire dans la PR), en plus de la propre issue de suivi créée par ce workflow — sert pour une issue métier qui existe déjà avant le run (voir plus bas) |
 
 ### Secrets (au niveau du **dépôt** appelant)
 

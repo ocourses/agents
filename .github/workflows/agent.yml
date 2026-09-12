@@ -54,6 +54,17 @@ on:
         required: false
         type: string
         default: ocots
+      link_issue:
+        description: >-
+          Numéro d'une AUTRE issue du dépôt appelant à lier nativement à la
+          PR (ligne "Closes #N" supplémentaire, en plus de la propre issue de
+          suivi créée par ce workflow). Sert quand une issue métier existe
+          déjà avant le run (ex. template-migration, conventions-candidate) :
+          sans ça, le seul lien retour vers elle est un commentaire, pas un
+          lien GitHub natif. Vide = aucun lien ajouté.
+        required: false
+        type: string
+        default: ""
     secrets:
       ALBERT_API_KEY:
         required: true
@@ -128,6 +139,7 @@ jobs:
           TITLE: ${{ inputs.title }}
           ASSIGNEE: ${{ inputs.assignee }}
           BASE_BRANCH: ${{ inputs.base_branch }}
+          LINK_ISSUE: ${{ inputs.link_issue }}
           RUN_ID: ${{ github.run_id }}
           MODEL: ${{ inputs.model }}
           REPO: ${{ github.repository }}

@@ -6,11 +6,19 @@
 # Entrées (variables d'environnement) :
 #   ROLE, TASK, TITLE, ASSIGNEE, BASE_BRANCH, RUN_ID, MODEL, REPO (owner/name)
 #   GH_TOKEN
+#   LINK_ISSUE   optionnel — numéro d'une AUTRE issue du dépôt appelant à
+#                fermer nativement via une ligne "Closes #N" supplémentaire
+#                dans le corps de la PR (en plus de la propre issue de suivi
+#                créée ci-dessous). Sert pour une issue métier qui existe déjà
+#                avant le run (template-migration, conventions-candidate) :
+#                sans ça, le seul lien retour vers elle est un commentaire, pas
+#                un lien GitHub natif visible dans le panneau "Development".
 # Sorties ($GITHUB_OUTPUT) : issue, pr, branch, tracking, slug, base_branch
 set -euo pipefail
 
 : "${ROLE:?}" "${TASK:?}" "${RUN_ID:?}" "${REPO:?}"
 ASSIGNEE="${ASSIGNEE:-ocots}"
+LINK_ISSUE="${LINK_ISSUE:-}"
 BASE_BRANCH="${BASE_BRANCH:-$(gh repo view "$REPO" --json defaultBranchRef -q .defaultBranchRef.name)}"
 TITLE="${TITLE:-$ROLE}"
 MODEL="${MODEL:-?}"
@@ -88,9 +96,17 @@ git commit -m "chore(agent): initialise le suivi de $ROLE (#$ISSUE)"
 git push -u origin "$BRANCH"
 
 # --- PR Draft ---
+# Une 2e ligne "Closes #N" est autorisée par GitHub et ferme les deux issues
+# indépendamment à la fusion — l'issue de suivi ci-dessus ET, si fournie,
+# l'issue métier d'origine (LINK_ISSUE).
+link_line=""
+if [ -n "$LINK_ISSUE" ]; then
+  link_line="Closes #$LINK_ISSUE
+"
+fi
 cat > "$tmp/pr.md" <<EOF
 Closes #$ISSUE
-
+${link_line}
 **Rôle :** \`$ROLE\`
 **Tâche :** $TASK
 
