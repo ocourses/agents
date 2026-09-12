@@ -176,14 +176,17 @@ Passe l'id exact en input `model`.
 .github/workflows/check.yml     workflow réutilisable, générique (détecteurs, pas de modèle)
 .github/workflows/latex-pr.yml  workflow réutilisable (compilation LaTeX sur PR non-Draft)
 .github/workflows/queue.yml     tourne ICI (pas réutilisable) — verrou global, déclenche agent-migrate-latex.yml à distance
+.github/workflows/secrets-expiry.yml  tourne ICI — relève les échéances de secrets, ouvre une issue
 scripts/scaffold.sh           couche A — mise en place du chantier
 scripts/run-opencode.sh       couche B — assemble AGENTS.md + lance OpenCode
 scripts/finalize.sh           couche A — clôture (suivi + bilan)
 scripts/checkers/             un détecteur par fichier (template-migration, conventions, …)
 scripts/queue-next.sh         dépile une issue de la file, déclenche, attend
+scripts/check-secrets-expiry.sh  relit config/secrets-expiry.txt, alerte à J-30
 config/opencode.json          provider Albert, permissions
 config/AGENTS.base.md         socle commun injecté dans AGENTS.md
 config/course-repos.txt       dépôts de cours surveillés par la file d'attente
+config/secrets-expiry.txt     échéances des PAT et clés Albert (saisies à la main)
 roles/                        un fichier par rôle
 ```
 
@@ -379,3 +382,27 @@ pas de scission plan/travail. Le workflow le trouve par son nom.
   Bumper de temps en temps, tester via un run avant de merger.
 - Les identifiants de modèles Albert peuvent devenir périmés — vérifier
   `GET /v1/models`.
+
+### Échéances des secrets
+
+Tous les jetons de ce montage expirent, à des dates échelonnées — quatre rien
+que pour les PAT. Le jour où l'un tombe, le symptôme est muet et trompeur :
+échec de checkout du dépôt privé `agents`, ou 401 d'Albert au milieu d'un run.
+Rien ne dit « jeton expiré ».
+
+`secrets-expiry.yml` (hebdomadaire) relit `config/secrets-expiry.txt` et ouvre
+une issue dès qu'une échéance passe sous 30 jours, est dépassée, ou n'est pas
+renseignée. **Après chaque rotation, mettre ce fichier à jour** : GitHub
+n'expose pas l'échéance d'un PAT par l'API, les dates y sont saisies à la main
+et le fichier ment dès qu'on l'oublie.
+
+Ce workflow n'utilise que `github.token` et ne lit aucun des secrets qu'il
+surveille : il ne peut donc pas tomber en panne pour la raison même qu'il
+surveille. En contrepartie il suit des **dates**, il ne teste pas la validité
+des clés — un secret ne se teste que depuis le dépôt qui le détient, ce qui
+demanderait un job dans chacun des trois cours.
+
+Rappel : chaque cours a ses propres `ALBERT_API_KEY` et `AGENTS_READ_TOKEN`
+(valeurs distinctes sous des noms identiques). Il n'y a pas de rotation
+groupée possible, et c'est voulu — une clé compromise sur un cours n'expose
+pas les autres.
