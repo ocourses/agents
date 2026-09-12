@@ -247,6 +247,32 @@ transformé en verdict par ce seul script. Nécessite le sous-module
 `conventions/` ; s'il est absent, le checker sort proprement sans rien
 faire (`::warning::`).
 
+### Exclure des documents (`.agents-ignore`)
+
+Les deux détecteurs excluent déjà `template/` et `conventions/` (sous-modules)
+en dur. Pour exclure autre chose — propre à **un** cours, ex. des slides pas
+encore prêtes pour ce traitement — un fichier `.agents-ignore` à la racine du
+dépôt de cours, un préfixe de chemin par ligne (`#` pour commenter) :
+
+```
+# .agents-ignore
+slides/
+```
+
+Absent = aucune exclusion, comportement inchangé. Ce n'est **pas** une règle
+du template (sinon elle serait dans les détecteurs eux-mêmes, pas dans un
+fichier par dépôt) : `automatique-enseignants`, par exemple, migre ses
+slides normalement.
+
+Effet différent selon le détecteur, à cause de leur mécanique respective :
+
+- **`conventions`** : un fichier exclu n'entre jamais dans le regroupement,
+  donc une candidate déjà ouverte pour lui se referme **automatiquement** au
+  run suivant (même mécanique que « plus aucune trouvaille »).
+- **`template-migration`** n'a pas de fermeture automatique (aucune n'a
+  jamais existé, exclusion ou pas) : une issue déjà ouverte pour un document
+  désormais exclu doit être fermée **à la main**.
+
 ### Appel depuis un dépôt de cours
 
 Un seul cron, un job par détecteur activé (le job « générique » ci-dessous

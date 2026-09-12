@@ -23,10 +23,21 @@
 #   REPO       owner/name du dépôt scanné (défaut: $GITHUB_REPOSITORY)
 #   GH_TOKEN   jeton gh avec issues:write sur $REPO
 #   CONVENTIONS_DIR  chemin du sous-module conventions (défaut: conventions)
+#   IGNORE_FILE   fichier de préfixes à exclure, propre au dépôt de cours
+#                 (défaut: .agents-ignore, à la racine — un préfixe de chemin
+#                 par ligne, ex. "slides/", "#" pour commenter). Absent =
+#                 aucune exclusion. `verifier` lui-même a son propre SKIP
+#                 (template/build/conventions/.git, en dur, pour TOUS ses
+#                 usages) : ceci filtre en plus, après coup, pour UN dépôt —
+#                 pas touché à `verifier`, qui reste générique.
+#                 Bonus : un fichier déjà exclu ici dont l'issue candidate
+#                 était ouverte se refermera tout seul (même mécanique que
+#                 "plus aucune trouvaille", plus bas).
 set -euo pipefail
 
 REPO="${REPO:-${GITHUB_REPOSITORY:-}}"
 CONVENTIONS_DIR="${CONVENTIONS_DIR:-conventions}"
+IGNORE_FILE="${IGNORE_FILE:-.agents-ignore}"
 LABEL="conventions-candidate"
 REVIEWED_LABEL="conventions-style"
 VERIFIER="${CONVENTIONS_DIR}/bin/verifier"
@@ -50,14 +61,37 @@ set +e
 set -e
 echo "::group::sortie de verifier"; cat "$tmp/out.txt"; echo "---"; cat "$tmp/err.txt"; echo "::endgroup::"
 
+# --- exclusions propres à ce dépôt (IGNORE_FILE) ---------------------------
+# Même piège évité qu'en template-migration.sh : ne pas compter sur le
+# comportement de `grep -vf` avec un fichier de motifs vide (élimine tout au
+# lieu de rien sur certains grep) — ici testé au cas par cas via une
+# fonction, donc pas concerné, mais la construction reste identique.
+: > "$tmp/ignore-patterns.txt"
+if [ -f "$IGNORE_FILE" ]; then
+  grep -vE '^[[:space:]]*(#|$)' "$IGNORE_FILE" \
+    | sed -E 's/[.[\*^$()+?{|]/\\&/g; s/^/^/' \
+    > "$tmp/ignore-patterns.txt"
+fi
+n_ignore=$(wc -l < "$tmp/ignore-patterns.txt")
+[ "$n_ignore" -gt 0 ] && echo "Exclusions ($IGNORE_FILE) : $n_ignore motif(s)"
+
+is_ignored() { # $1 = chemin
+  [ "$n_ignore" -gt 0 ] || return 1
+  grep -qEf "$tmp/ignore-patterns.txt" <<< "$1"
+}
+
 # ---------------------------------------------------------------------------
 # Regroupement par fichier : chemin -> lignes "| ligne | RÈGLE | message |"
+# Un chemin exclu par IGNORE_FILE n'entre jamais dans files.txt : il est donc
+# traité comme "plus aucune trouvaille" par la boucle de fermeture plus bas,
+# qui referme automatiquement une candidate déjà ouverte pour ce fichier.
 # ---------------------------------------------------------------------------
 : > "$tmp/files.txt"
 while IFS= read -r line; do
   [ -n "$line" ] || continue
   if [[ "$line" =~ ^([^:]+):([0-9]+):\ \[([A-Za-z0-9]+)\]\ (.*)$ ]]; then
     path="${BASH_REMATCH[1]}"; ln="${BASH_REMATCH[2]}"; rule="${BASH_REMATCH[3]}"; msg="${BASH_REMATCH[4]}"
+    is_ignored "$path" && continue
     echo "$path" >> "$tmp/files.txt"
     row_file="$tmp/rows-$(printf '%s' "$path" | md5sum | cut -d' ' -f1).txt"
     printf '| %s | %s | %s |\n' "$ln" "$rule" "${msg//|/\\|}" >> "$row_file"

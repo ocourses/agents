@@ -24,10 +24,18 @@
 #   TEMPLATE_DIR  chemin du sous-module template (défaut: template)
 #   DISPATCH_WORKFLOW  nom du workflow de migration à suggérer dans l'issue
 #                       (défaut: agent-migrate-latex.yml)
+#   IGNORE_FILE   fichier de préfixes à exclure, propre au dépôt de cours
+#                 (défaut: .agents-ignore, à la racine — un préfixe de chemin
+#                 par ligne, ex. "slides/", "#" pour commenter). Absent =
+#                 aucune exclusion, comportement inchangé. Sert à un choix
+#                 spécifique à UN cours (ex. slides pas encore prêtes pour ce
+#                 traitement) — pas une règle du template, sinon elle serait
+#                 dans ce script, pas dans un fichier par dépôt.
 set -euo pipefail
 
 REPO="${REPO:-${GITHUB_REPOSITORY:-}}"
 TEMPLATE_DIR="${TEMPLATE_DIR:-template}"
+IGNORE_FILE="${IGNORE_FILE:-.agents-ignore}"
 DISPATCH_WORKFLOW="${DISPATCH_WORKFLOW:-agent-migrate-latex.yml}"
 LABEL="template-migration"
 COMPAT="${TEMPLATE_DIR}/tex/ocots-compat.sty"
@@ -77,14 +85,38 @@ echo "Noms legacy extraits : $n_envs environnement(s), $n_cmds commande(s)"
 envs_re="$(paste -sd'|' "$tmp/envs.txt")"
 cmds_re="$(paste -sd'|' "$tmp/cmds.txt")"
 
+# --- exclusions propres à ce dépôt (IGNORE_FILE), en plus des sous-modules --
+# ATTENTION : `grep -vf` avec un fichier de motifs VIDE élimine tout au lieu
+# de rien sur certains grep (confirmé en test) — d'où la branche explicite
+# ci-dessous plutôt que de compter sur ce comportement, quel que soit le grep
+# du runner.
+: > "$tmp/ignore-patterns.txt"
+if [ -f "$IGNORE_FILE" ]; then
+  grep -vE '^[[:space:]]*(#|$)' "$IGNORE_FILE" \
+    | sed -E 's/[.[\*^$()+?{|]/\\&/g; s/^/^/' \
+    > "$tmp/ignore-patterns.txt"
+fi
+n_ignore=$(wc -l < "$tmp/ignore-patterns.txt")
+[ "$n_ignore" -gt 0 ] && echo "Exclusions ($IGNORE_FILE) : $n_ignore motif(s)"
+
 # ---------------------------------------------------------------------------
-# 2. Repérer les fichiers pilotes (\documentclass), hors template/ et conventions/
+# 2. Repérer les fichiers pilotes (\documentclass), hors template/, conventions/
+#    et les exclusions de IGNORE_FILE
 # ---------------------------------------------------------------------------
-mapfile -t pilots < <(
-  grep -rlZ --include='*.tex' '\\documentclass' . 2>/dev/null \
+# Fichier intermédiaire + `if` explicite plutôt qu'un `&&/||` en pipeline : ce
+# dernier n'est PAS un if/then/else (un `grep -v` qui filtre tout sort en
+# échec, ce qui déclencherait aussi la branche `||`) — piège classique, évité
+# ici en le rendant sans ambiguïté.
+grep -rlZ --include='*.tex' '\\documentclass' . 2>/dev/null \
   | tr '\0' '\n' | sed 's#^\./##' \
-  | grep -v "^${TEMPLATE_DIR}/" | grep -v '^conventions/' | sort -u
-)
+  | grep -v "^${TEMPLATE_DIR}/" | grep -v '^conventions/' \
+  > "$tmp/candidates-raw.txt" || true
+
+if [ "$n_ignore" -gt 0 ]; then
+  mapfile -t pilots < <(grep -vEf "$tmp/ignore-patterns.txt" "$tmp/candidates-raw.txt" 2>/dev/null | sort -u)
+else
+  mapfile -t pilots < <(sort -u "$tmp/candidates-raw.txt")
+fi
 echo "Pilotes trouvés : ${#pilots[@]}"
 
 # ---------------------------------------------------------------------------
