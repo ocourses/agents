@@ -1,3 +1,48 @@
+# ── macOS ─────────────────────────────────────────────
 .DS_Store
+._*
+.AppleDouble
+.LSOverride
+
+# ── Éditeurs / IDE ────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Python ────────────────────────────────────────────
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# ── Artefacts LaTeX (latex-compile sort hors du dépôt,
+#    mais on ignore au cas où on compilerait en local) ──
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.nav
+*.out
+*.snm
+*.synctex.gz
+*.toc
+*.vrb
+build/
+
+# ── Secrets / environnement local ────────────────────
+.env
+.env.*
+*.local
+
+# ── Divers ────────────────────────────────────────────
+*.bak
+*.tmp
+*.orig
