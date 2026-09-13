@@ -47,12 +47,12 @@ on:
   # automatiquement les workflows planifiés d'un dépôt public après 60 JOURS
   # SANS ACTIVITÉ. Si la file se tait après une longue pause (vacances), c'est
   # la première chose à vérifier : Actions -> ce workflow -> « Enable workflow ».
-  # Horaire, et non plus au quart d'heure : ce n'est plus le cron qui assure le
+  # Quotidien, chaque nuit à 00h23 : ce n'est plus le cron qui assure le
   # débit. Il ne fait que RELANCER une chaîne éteinte ; c'est l'auto-chaînage
   # (fin de scripts/queue-next.sh) qui enchaîne les ticks tant qu'il reste des
   # tâches, sans dépendre d'un créneau tenu à l'heure.
   schedule:
-    - cron: "23 * * * *"
+    - cron: "23 0 * * *"
   workflow_dispatch:
     inputs:
       chain:
