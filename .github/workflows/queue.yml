@@ -62,7 +62,7 @@ on:
       max_chain:
         description: "Nombre maximum de ticks enchaînés d'affilée"
         required: false
-        default: "6"
+        default: "25"
 
 concurrency:
   group: agent-albert-global
