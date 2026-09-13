@@ -107,13 +107,30 @@ gh label create "$REVIEWED_LABEL" --repo "$REPO" --color d93f0b \
 existing_json="$(gh issue list --repo "$REPO" --label "$LABEL" --state open \
   --json number,title,body --limit 200 2>/dev/null || echo '[]')"
 
-n_open=0; n_updated=0; n_created=0; n_closed=0
+# Fichiers déjà triés et promus `conventions-style` par conventions-reviewer :
+# la promotion réutilise le même numéro d'issue, juste avec le label et le
+# corps changés (roles/conventions-reviewer.md, étape 5) — donc un tel fichier
+# n'apparaît plus dans existing_json ($LABEL) et serait sinon recréé en
+# doublon brut à chaque re-scan, alors qu'il a déjà un verdict humain/agent en
+# cours (bug constaté en pratique : #46 à #53 dupliquant #24..#36). On ne
+# touche jamais un fichier déjà promu : ni création, ni mise à jour, ni
+# fermeture — il appartient désormais à conventions-fixer / à une relecture
+# humaine, pas à ce détecteur mécanique.
+existing_style_titles="$(gh issue list --repo "$REPO" --label "$REVIEWED_LABEL" --state open \
+  --json title --jq '.[].title' --limit 200 2>/dev/null || true)"
+
+n_open=0; n_updated=0; n_created=0; n_closed=0; n_promoted=0
 
 # --- fichiers en infraction : créer ou mettre à jour -----------------------
 while IFS= read -r path; do
   [ -n "$path" ] || continue
-  row_file="$tmp/rows-$(printf '%s' "$path" | md5sum | cut -d' ' -f1).txt"
   title="[conventions] $path"
+  if printf '%s\n' "$existing_style_titles" | grep -qxF "$title"; then
+    echo "  = déjà promu conventions-style, ignoré : $path"
+    n_promoted=$((n_promoted+1))
+    continue
+  fi
+  row_file="$tmp/rows-$(printf '%s' "$path" | md5sum | cut -d' ' -f1).txt"
   body_file="$tmp/body.md"
   {
     echo "**⚠️ Candidat brut, pas relu.** Sortie mécanique de \`conventions/bin/verifier\`"
@@ -170,4 +187,4 @@ while IFS=$'\t' read -r num title; do
 done < <(printf '%s' "$existing_json" | jq -r '.[] | "\(.number)\t\(.title)"')
 
 echo
-echo "Résumé : $n_open fichier(s) en infraction ($n_created créée(s), $n_updated mise(s) à jour), $n_closed fermée(s)."
+echo "Résumé : $n_open fichier(s) en infraction ($n_created créée(s), $n_updated mise(s) à jour), $n_closed fermée(s), $n_promoted déjà promue(s) conventions-style (ignorée(s))."
