@@ -86,10 +86,12 @@ jobs:
           # son arborescence, ou tiré par un \input / \include (match sur le
           # nom de base sans extension).
           : > docs.txt
-          for m in $mains; do
+          while IFS= read -r m; do
+            [ -n "$m" ] || continue
             mdir=$(dirname "$m")
             hit=0
-            for c in $changed; do
+            while IFS= read -r c; do
+              [ -n "$c" ] || continue
               cbase=$(basename "$c"); cstem="${cbase%.tex}"
               case "$c" in
                 "$m") hit=1;;
@@ -98,9 +100,9 @@ jobs:
                   grep -qE "\\\\(input|include|subfile)\{[^}]*${cstem}(\.tex)?\}" "$m" 2>/dev/null && hit=1;;
               esac
               [ "$hit" = 1 ] && break
-            done
+            done <<< "$changed"
             [ "$hit" = 1 ] && echo "$m" >> docs.txt
-          done
+          done <<< "$mains"
 
           sort -u -o docs.txt docs.txt
           echo "Documents à compiler :"
@@ -136,11 +138,22 @@ jobs:
                 [ -f "$c" ] && { log="$c"; break; }
               done
               if [ -n "$log" ]; then
+                errs=$(grep -E ':[0-9]+:|^!|^l\.[0-9]+|Undefined control|Runaway|Missing|Not in outer|Emergency stop|.*Error' "$log" | head -60 || true)
                 {
-                  echo "<details><summary>Erreurs — <code>$f</code></summary>"
-                  echo; echo '```'
-                  grep -E ':[0-9]+:|^!|^l\.[0-9]+|Undefined control|Runaway|Missing|Not in outer|Emergency stop|.*Error' "$log" | head -60 || true
-                  echo '```'; echo "</details>"
+                  # <details> indenté sous l'item : un bloc HTML au niveau
+                  # colonne 0 absorberait les items suivants (pas de ligne
+                  # vide après </details>) et casserait la liste.
+                  echo "  <details><summary>Erreurs — <code>$f</code></summary>"
+                  echo
+                  if [ -n "$errs" ]; then
+                    echo '  ```'
+                    printf '%s\n' "$errs" | sed 's/^/  /'
+                    echo '  ```'
+                  else
+                    echo "  _Aucune erreur extraite — voir le log complet en artefact._"
+                  fi
+                  echo
+                  echo "  </details>"
                 } >> report.md
                 cp "$log" "_artifacts/$(echo "${f%.tex}.log" | tr / -)"
               fi
