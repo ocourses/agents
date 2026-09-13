@@ -131,6 +131,14 @@ voulu.
 
 ## Méthode
 
+0. **`latex-compile <pilote>` en l'état, avant tout changement.** Sert de
+   référence pour l'étape 5 : si le pilote ne compile déjà pas, pour une
+   raison **étrangère à la migration** (bug préexistant, sans rapport avec le
+   template ou le renommage), note l'erreur (fichier, ligne, message) et **ne
+   tente pas de le corriger toi-même** sauf si la tâche le demande
+   explicitement — un pilote cassé pour une raison hors migration reste hors
+   périmètre, même si le corriger permettrait d'obtenir un document qui
+   compile.
 1. Plan dans le fichier de suivi : liste **la chaîne complète des `\input`**
    depuis la cible, le préambule proposé, la table de renommage, les macros
    sans équivalent.
@@ -146,13 +154,30 @@ voulu.
 4. Vérifie à chaque commit que `git diff --staged` ne montre que forme +
    renommage.
 5. **`latex-compile <pilote>` à la fin** (et quand utile en cours de route) :
-   le document doit compiler avant le bilan. Boucle compiler → lire l'erreur →
-   corriger. Le bilan ne dit « migré » que si `latex-compile` passe ; sinon il
-   détaille l'erreur résiduelle (fichier, ligne, message) et ce que tu as
-   essayé.
+   - Si l'étape 0 compilait déjà, ou si l'échec initial était **lié à la
+     migration** (ancien préambule, macros non renommées) : le document doit
+     compiler avant le bilan. Boucle compiler → lire l'erreur → corriger. Le
+     bilan ne dit « migré » que si `latex-compile` passe ; sinon il détaille
+     l'erreur résiduelle (fichier, ligne, message) et ce que tu as essayé.
+   - Si l'étape 0 échouait déjà pour une raison **étrangère à la migration** :
+     ne bloque pas le bilan sur ce point précis — confirme seulement que ton
+     diff ne l'aggrave pas et ne le masque pas (comparaison des deux messages
+     d'erreur), et signale-le explicitement dans le bilan plutôt que de
+     conclure à un échec de la tâche.
+   - **Vérifie `git status` juste après compilation.** `latexmk` peut modifier
+     un fichier suivi par git en dehors des fichiers migrés — typiquement un
+     PDF rendu committé (dossier qui ne l'ignore pas via `.gitignore`).
+     Restaure tout fichier de ce type (`git checkout -- <fichier>`) avant de
+     committer : un rendu recompilé (métadonnées, horodatage) n'est pas un
+     livrable de migration, même visuellement identique, et ne doit pas
+     polluer le diff.
 
 ## Diff idéal
 
 Préambule remplacé (fichier pilote), environnements renommés dans **tous** les
 fichiers de la chaîne d'`\input`, `.latexmkrc` ajouté si besoin — et **tout le
-reste identique caractère pour caractère**. Le document compile.
+reste identique caractère pour caractère**. Le document compile, ou compilait
+déjà mal avant la migration pour une raison qui lui est étrangère (bilan
+explicite dans ce cas, sans tentative de correction hors périmètre). Aucun
+fichier suivi par git modifié en dehors de la chaîne migrée (PDF rendu
+restauré si la compilation l'a touché).
