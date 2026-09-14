@@ -32,6 +32,12 @@ classe, préambule, noms d'environnements, macros.
 | TD | `\documentclass[11pt]{ocots-td}` + `\usepackage[lang=fr, theme=ocots, solutions=none, math={analysis,control}, institution={n7}]{ocots}` |
 | Poly | `\documentclass[11pt,twoside]{ocots-book}` + `\usepackage[lang=fr, theme=ocots, solutions=end, math={analysis,control}, institution={n7}]{ocots}` |
 | Examen | `\documentclass[11pt]{ocots-exam}` + idem TD |
+| Diapositives | `\documentclass[9pt,t]{beamer}` + `\usepackage[lang=fr, theme=ocots, solutions=none, math={analysis,control}, institution={n7}]{ocots}` |
+
+- **Diapositives : pas de classe `ocots-*` dédiée** — seul `\documentclass{beamer}` +
+  `\usepackage[...]{ocots}` signale la migration (c'est aussi le seul signal
+  que `checkers/template-migration.sh` sait reconnaître pour ce support).
+  N'invente pas de classe `ocots-beamer`/`ocots-slides` : elle n'existe pas.
 
 - Retire les `\usepackage` que le template fournit déjà (babel, inputenc,
   amsmath, amssymb, mathrsfs, hyperref, graphicx, tikz, enumitem, xspace,
@@ -76,6 +82,63 @@ classe, préambule, noms d'environnements, macros.
   ne la perd pas.
 - Corrigé au fil du texte : `\solution` (commande) dans l'`exercise`, ou
   `\begin{correction}` hors boîte.
+
+### Alias d'environnements hérités (`my*`), tous supports
+
+Un pilote **déjà migré** (classe/paquet corrects) peut encore utiliser les
+alias transitoires de `ocots-compat.sty` — même logique que les macros
+mathématiques ci-dessous, mais pour les environnements, **et sur tous les
+supports, diapositives comprises**. Deux mécanismes différents y cohabitent,
+d'où deux façons de migrer. Liste extraite du fichier à la date d'écriture de
+ce rôle (`ocots-compat.sty` évolue : si un doute, revérifie avec
+`grep -oE '\\(NewDocumentEnvironment|ocotsaliasenv)\{[A-Za-z@*]+\}' template/tex/ocots-compat.sty`
+— c'est exactement ce que fait `checkers/template-migration.sh`, pas de liste figée à maintenir en double) :
+
+- **Alias directs** (`\ocotsaliasenv`, simple renommage, même signature) :
+  `myassumption`/`myassumption*`→`assumption`/`assumption*` ·
+  `myquestionnement`→`openquestion` · `mydifficulty`→`difficulty` ·
+  `myweb`→`web` · `proofdeb`/`proofmil`/`prooffin`→`proofbegin`/
+  `proofmiddle`/`proofend` · `myquestion`→`question` ·
+  `mysubquestion`→`subquestion` · `myexercise`→`exercise` ·
+  `mycorr`/`mycorrection`→`correction` ·
+  `myinstructions`/`myinstructions*`→`instructions` ·
+  **`myframe`→`slide`** (diapositives — le seul de cette famille qui ne
+  s'applique qu'à un seul support).
+- **Alias à ancienne syntaxe** (`\NewDocumentEnvironment`, la v0 antérieure au
+  template prenait des arguments positionnels) — renommer **et** convertir
+  vers la syntaxe à clés actuelle (même règle que « Boîtes à titre »
+  ci-dessus) :
+  - `mytheorem{Titre}{cle}`→`theorem[title={Titre}, label=cle]`,
+    `mydefinition`→`definition`, `myproposition`→`proposition`,
+    `mycorollary`→`corollary`, `myconjecture`→`conjecture` — même schéma
+    `{Titre}{cle}` à deux arguments positionnels pour les cinq. **Piège sur
+    le label** : la v0 préfixait automatiquement `cle` (`thm:`, `def:`,
+    `prop:`, `cor:`, `conj:` respectivement, sauf si `cle` portait déjà ce
+    préfixe) avant de l'utiliser comme `label=`, alors que la syntaxe
+    actuelle **ne préfixe rien**. Si `cle` est référencé ailleurs
+    (`\ref{...}` — vérifie au `grep`), pose `label=` avec le préfixe
+    correspondant explicitement pour ne pas casser la référence ; si `cle`
+    n'est jamais référencé, pas besoin de label du tout (même règle que
+    « Boîtes à titre »).
+  - `mylemma`/`mylemma*`→`lemma`/`lemma*`, `myexample`/`myexample*`→
+    `example`/`example*`, `myremark`/`myremark*`→`remark`/`remark*` — titre
+    optionnel simple (`monenv[Titre]`→`monenv[title={Titre}]`), pas de
+    second argument, pas de piège de label.
+  - `myexercisecb` (ancienne syntaxe d'étiquette `\begin{myexercisecb}<etiquette>`)
+    →`exercise[label=ex:etiquette]` (même convention de préfixe `ex:` que le
+    reste des exercices).
+
+Ces alias compilent (`ocots-compat.sty` les garde), **mais utilise
+systématiquement les noms et la syntaxe actuels** — ce sont des passerelles
+de transition pour du contenu pas encore migré, pas une API à perpétuer
+(même principe que pour les macros mathématiques, cf. plus bas).
+**Contrairement aux macros mathématiques, leur usage résiduel ne déclenche
+(à la date d'écriture de ce rôle) aucun avertissement à la compilation** —
+vérifie si ça a changé (`ocourses/ocots-latex-template#33`) avant de t'y
+fier : tant que ce n'est pas le cas, ne conclus **jamais** « migré » sur la
+seule absence d'erreur/avertissement de `latex-compile` pour ce qui est des
+environnements — `grep` explicitement les noms `my*` restants dans toute la
+chaîne `\input`, y compris pour un pilote beamer.
 
 ## Macros maison
 
@@ -142,9 +205,16 @@ voulu.
 1. Plan dans le fichier de suivi : liste **la chaîne complète des `\input`**
    depuis la cible, le préambule proposé, la table de renommage, les macros
    sans équivalent.
-2. Lis `template/examples/td/main.tex` (ou `poly/`) en entier ; consulte
-   `template/doc/commandes.md` et `template/doc/notations.md` (référence des
-   macros mathématiques) par `grep`/`sed` ciblés, pas en entier.
+2. Lis en entier l'exemple du support visé (structure des exemples revue
+   régulièrement — si les chemins ci-dessous ne correspondent plus, cherche
+   `find template/examples -iname '*.tex'` avant de conclure à un support
+   sans exemple) : `template/examples/themes/ocots/td.tex`,
+   `poly.tex`, `exam.tex` ou `slides.tex` selon le support, chacun
+   `\input`ant le corps correspondant sous `template/examples/content/`
+   (`td-body.tex`, `exam-body.tex`, `slides-body.tex`, ou plusieurs fichiers
+   pour `poly.tex`). Consulte `template/doc/commandes.md` et
+   `template/doc/notations.md` (référence des macros mathématiques) par
+   `grep`/`sed` ciblés, pas en entier.
 3. **Un fichier à la fois, commité avant de passer au suivant.** Ordre :
    préambule + en-tête du pilote → `git add <pilote>` + commit ; puis chaque
    fichier `\input`é → `git add <ce fichier>` + commit. **Ne garde jamais
