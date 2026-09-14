@@ -173,7 +173,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           AGENTS_DIR: _agents
           ROLE: ${{ inputs.role }}
-          TASK: ${{ inputs.task }}
+          # Sortie de scaffold.sh, pas l'input brut : avec link_issue=, elle
+          # inclut le body de l'issue liée (cf. scaffold.sh). Sans link_issue=,
+          # elle vaut inputs.task inchangé.
+          TASK: ${{ steps.scaffold.outputs.task }}
           MODEL: ${{ inputs.model }}
           REPO: ${{ github.repository }}
           BRANCH: ${{ steps.scaffold.outputs.branch }}
