@@ -12,7 +12,10 @@
 #                créée : LINK_ISSUE sert elle-même de fil de suivi (elle est
 #                fermée nativement via "Closes #N" à la fusion de la PR). Sans
 #                ça, une issue de suivi dédiée est créée comme avant.
-# Sorties ($GITHUB_OUTPUT) : issue, pr, branch, tracking, slug, base_branch
+# Sorties ($GITHUB_OUTPUT) : issue, pr, branch, tracking, slug, base_branch, task
+#   task = TASK potentiellement enrichie du body de LINK_ISSUE (cf. plus bas) —
+#   c'est CETTE valeur que le step suivant (run-opencode.sh) doit utiliser,
+#   pas l'input `task=` brut, sous peine de perdre l'enrichissement.
 set -euo pipefail
 
 : "${ROLE:?}" "${TASK:?}" "${RUN_ID:?}" "${REPO:?}"
@@ -47,6 +50,18 @@ Prise en charge par le rôle \`$ROLE\` — branche \`$BRANCH\`, run $RUN_URL.
 Suivi (plan + journal + bilan) : \`$TRACKING\`.
 EOF
 )" >/dev/null
+
+  # La tâche fournie par le workflow appelant (`task=`) peut rester générique
+  # ("migre le document") : le détail concret (ex. pour une issue LEGACY, la
+  # liste des noms d'alias trouvés par le checker) vit dans le BODY de
+  # l'issue liée, pas dans l'input. Sans cet ajout, l'agent n'a aucun moyen
+  # de le voir et peut conclure « rien à faire » à tort (cf. ocourses/agents#10).
+  # `|| true` : un body illisible (permissions, issue supprimée entre-temps)
+  # ne doit pas faire échouer tout le chantier, juste laisser TASK inchangée.
+  ISSUE_BODY="$(gh issue view "$ISSUE" --repo "$REPO" --json body -q '.body // ""' 2>/dev/null || true)"
+  if [ -n "$ISSUE_BODY" ]; then
+    TASK="$(printf "%s\n\n---\n\n**Contenu de l'issue liée #%s :**\n\n%s\n" "$TASK" "$ISSUE" "$ISSUE_BODY")"
+  fi
 else
   cat > "$tmp/issue.md" <<EOF
 **Rôle :** \`$ROLE\`
@@ -135,6 +150,13 @@ PR="${PR_URL##*/}"
   echo "tracking=$TRACKING"
   echo "slug=$SLUG"
   echo "base_branch=$BASE_BRANCH"
+  # TASK peut contenir des sauts de ligne (body d'issue enrichi) : forme
+  # multiligne officielle des sorties GitHub Actions, délimiteur imprévisible
+  # pour éviter toute collision avec le contenu.
+  task_delim="TASK_${RUN_ID}_$$"
+  echo "task<<$task_delim"
+  echo "$TASK"
+  echo "$task_delim"
 } >> "${GITHUB_OUTPUT:-/dev/stdout}"
 
 echo "Chantier prêt : issue #$ISSUE, PR #$PR, branche $BRANCH"
