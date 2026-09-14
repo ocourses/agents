@@ -197,11 +197,20 @@ set -e
 success=0
 case "$kind" in
   migration|fix)
-    if [ "$kind" = "migration" ]; then pr_title="[agent] Migration ${target}"
-    else pr_title="[agent] Correction conventions ${target}"; fi
-    pr_json="$(gh pr list --repo "$repo" --state open --search "in:title \"${pr_title}\"" \
-      --json number,url --limit 5 2>/dev/null || echo '[]')"
-    pr_url="$(printf '%s' "$pr_json" | jq -r '.[0].url // empty')"
+    # Recherche par NOM DE BRANCHE (`agent/<slug>-<run_id>`, cf. scaffold.sh),
+    # pas par titre : `gh pr list --search` interroge l'index de recherche
+    # GitHub, qui peut avoir un léger retard sur l'API liste juste après un
+    # push — faux `agent:failed` observé sur ocourses/automatique-enseignants#139
+    # (la requête rejouée plus tard trouvait la PR). `run_id` (capturé plus
+    # haut) suffit à isoler LA branche de CE run précis, sans reconstruire le
+    # slug exact — lui dépend de TITLE, calculé dans scaffold.sh, inconnu ici.
+    if ! pr_json="$(gh pr list --repo "$repo" --state open \
+        --json number,url,headRefName --limit 200 2>"$tmp/pr-list.err")"; then
+      echo "::warning::$repo — gh pr list a échoué après le run ($run_url) : $(cat "$tmp/pr-list.err")"
+      pr_json='[]'
+    fi
+    pr_url="$(printf '%s' "$pr_json" | jq -r --arg suffix "-${run_id}" \
+      '[.[] | select(.headRefName | startswith("agent/") and endswith($suffix))] | .[0].url // empty')"
     if [ "$rc" -eq 0 ] && [ -n "$pr_url" ]; then
       success=1
       gh issue comment "$number" --repo "$repo" \
