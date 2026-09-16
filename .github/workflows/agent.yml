@@ -59,12 +59,27 @@ on:
           Numéro d'une issue métier qui existe déjà avant le run (ex.
           template-migration, conventions-candidate, conventions-style).
           Si fourni, elle sert ELLE-MÊME de fil de suivi — aucune issue
-          dédiée n'est créée en plus — et elle est fermée nativement
-          ("Closes #N") à la fusion de la PR. Vide = une issue de suivi
-          dédiée est créée (rôles sans issue d'origine).
+          dédiée n'est créée en plus. Vide = une issue de suivi dédiée est
+          créée (rôles sans issue d'origine). Fermeture à la fusion : voir
+          close_on_merge.
         required: false
         type: string
         default: ""
+      close_on_merge:
+        description: >-
+          La PR ferme nativement ("Closes #N") l'issue de suivi (dédiée, ou
+          link_issue) à sa fusion — vrai pour un rôle dont fusionner la PR
+          LIVRE le correctif attendu (latex-template-migrator,
+          conventions-fixer). Mettre "false" pour un rôle de TRIAGE
+          (conventions-reviewer) dont la PR ne contient aucun correctif de
+          contenu : link_issue peut y rester ouverte après fusion (promue
+          conventions-style, en attente d'un rôle correcteur) — la fermer à
+          la fusion la sortirait de la file sans que le correctif n'ait
+          jamais eu lieu (ocourses/agents, issue rencontrée sur
+          mesure-integration-enseignants#125 / PR #169).
+        required: false
+        type: string
+        default: "true"
     secrets:
       ALBERT_API_KEY:
         required: true
@@ -162,6 +177,7 @@ jobs:
           ASSIGNEE: ${{ inputs.assignee }}
           BASE_BRANCH: ${{ inputs.base_branch }}
           LINK_ISSUE: ${{ inputs.link_issue }}
+          CLOSE_ON_MERGE: ${{ inputs.close_on_merge }}
           RUN_ID: ${{ github.run_id }}
           MODEL: ${{ inputs.model }}
           REPO: ${{ github.repository }}
