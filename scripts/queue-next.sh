@@ -105,7 +105,10 @@ reap_stale_claims() {
       bash "$SCRIPT_DIR/claim-issue.sh" fail "$repo" "$num" \
         "réclamée depuis plus de ${STALE_HOURS}h sans résolution (run interrompu, ou session locale abandonnée) — vérification humaine nécessaire" || true
     fi
-  done < <(gh issue list --repo "$repo" --label "$DISPATCHED_LABEL" --state open --json number --jq '.[].number' 2>/dev/null)
+  # --limit 200 comme les autres listes de ce fichier : le défaut de
+  # `gh issue list` est 30, une troncature silencieuse raterait des
+  # réclamations périmées au-delà (ocourses/agents#14).
+  done < <(gh issue list --repo "$repo" --label "$DISPATCHED_LABEL" --state open --json number --jq '.[].number' --limit 200 2>/dev/null)
 }
 
 for repo in "${repos[@]}"; do
