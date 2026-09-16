@@ -55,106 +55,33 @@
 # locale, ou toi directement) qui prendrait une issue sans passer par cette
 # file. Les deux acteurs DOIVENT utiliser le même protocole pour ne pas se
 # marcher dessus : voir l'en-tête de claim-issue.sh.
+#
+# La SÉLECTION de la prochaine tâche (parcours des dépôts, ramasse-miettes
+# des réclamations abandonnées, mapping label -> rôle -> titre -> tâche) et
+# la REVÉRIFICATION post-run d'une migration vivent dans scripts/lib/
+# (next-task.sh, rescan-migration.sh) : un tick local (voir LOCAL-QUEUE.md)
+# les appelle telles quelles, pour ne jamais diverger de ce script sur ce
+# qui compte comme « prochaine tâche » ou « migration réussie ».
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COURSE_REPOS_FILE="${COURSE_REPOS_FILE:-config/course-repos.txt}"
-STALE_HOURS="${STALE_HOURS:-3}"
-# Revérification post-run des migrations (voir en-tête) : chemin du
-# sous-module template dans le dépôt de cours (même convention TEMPLATE_DIR
-# que le checker) et script de détection partagé avec lui.
-TEMPLATE_DIR="${TEMPLATE_DIR:-template}"
-SCAN="${SCAN:-${SCRIPT_DIR}/lib/template-scan.sh}"
-# Dupliqués depuis claim-issue.sh (doivent rester identiques) : nécessaires
-# ici pour filtrer les candidats côté lecture (gh issue list --label, jq).
-DISPATCHED_LABEL="agent:dispatched"
-FAILED_LABEL="agent:failed"
 
 : "${GH_TOKEN:?GH_TOKEN requis (PAT dédié, voir en-tête du script)}"
-[ -f "$COURSE_REPOS_FILE" ] || { echo "::error::$COURSE_REPOS_FILE introuvable"; exit 1; }
-
-mapfile -t repos < <(grep -vE '^[[:space:]]*(#|$)' "$COURSE_REPOS_FILE")
-[ "${#repos[@]}" -gt 0 ] || { echo "Aucun dépôt listé dans $COURSE_REPOS_FILE — rien à faire."; exit 0; }
-echo "Dépôts surveillés : ${repos[*]}"
 
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
-: > "$tmp/candidates.jsonl"
 
-# -----------------------------------------------------------------------
-# Ramasse-miettes — une réclamation (agent:dispatched) sans résolution
-# depuis plus de STALE_HOURS est considérée abandonnée : run GitHub Actions
-# annulé/tué avant sa propre gestion d'échec, ou session locale interrompue
-# (Ctrl-C, machine éteinte) sans être allée jusqu'à `claim-issue.sh release`
-# ou `fail`. Sans ce filet, une telle issue resterait réclamée pour de bon,
-# invisible et jamais retraitée. On se base sur le commentaire de prise en
-# charge posté par `claim claim` (source de vérité — l'ancienneté du label
-# lui-même n'est pas exposée par l'API issues).
-# -----------------------------------------------------------------------
-reap_stale_claims() {
-  local repo="$1" now_epoch claim_epoch age_h num claim_at
-  now_epoch="$(date -u +%s)"
-  while read -r num; do
-    [ -n "$num" ] || continue
-    claim_at="$(gh issue view "$num" --repo "$repo" --json comments \
-      --jq '[.comments[] | select(.body | startswith("🔒 Prise en charge"))] | last | .createdAt // empty' 2>/dev/null)"
-    [ -n "$claim_at" ] || continue
-    claim_epoch="$(date -u -d "$claim_at" +%s 2>/dev/null)" || continue
-    age_h=$(( (now_epoch - claim_epoch) / 3600 ))
-    if [ "$age_h" -ge "$STALE_HOURS" ]; then
-      echo "::warning::$repo#$num réclamée depuis ${age_h}h (>= ${STALE_HOURS}h) sans résolution — marquée en échec."
-      bash "$SCRIPT_DIR/claim-issue.sh" fail "$repo" "$num" \
-        "réclamée depuis plus de ${STALE_HOURS}h sans résolution (run interrompu, ou session locale abandonnée) — vérification humaine nécessaire" || true
-    fi
-  # --limit 200 comme les autres listes de ce fichier : le défaut de
-  # `gh issue list` est 30, une troncature silencieuse raterait des
-  # réclamations périmées au-delà (ocourses/agents#14).
-  done < <(gh issue list --repo "$repo" --label "$DISPATCHED_LABEL" --state open --json number --jq '.[].number' --limit 200 2>/dev/null)
-}
-
-for repo in "${repos[@]}"; do
-  reap_stale_claims "$repo"
-
-  gh issue list --repo "$repo" --label "template-migration" --state open \
-    --json number,title,createdAt,labels --limit 200 2>/dev/null \
-  | jq -c --arg repo "$repo" --arg kind "migration" \
-      '.[] | . + {repo: $repo, kind: $kind}' >> "$tmp/candidates.jsonl" || true
-
-  gh issue list --repo "$repo" --label "conventions-candidate" --state open \
-    --json number,title,createdAt,labels --limit 200 2>/dev/null \
-  | jq -c --arg repo "$repo" --arg kind "conventions" \
-      '.[] | . + {repo: $repo, kind: $kind}' >> "$tmp/candidates.jsonl" || true
-
-  gh issue list --repo "$repo" --label "conventions-style" --state open \
-    --json number,title,createdAt,labels --limit 200 2>/dev/null \
-  | jq -c --arg repo "$repo" --arg kind "fix" \
-      '.[] | . + {repo: $repo, kind: $kind}' >> "$tmp/candidates.jsonl" || true
-done
-
-jq -s --arg d "$DISPATCHED_LABEL" --arg f "$FAILED_LABEL" '
-  [ .[] | select(([.labels[].name] | index($d)) == null and ([.labels[].name] | index($f)) == null) ]
-  | sort_by(.createdAt)
-' "$tmp/candidates.jsonl" > "$tmp/eligible.json"
-
-n="$(jq 'length' "$tmp/eligible.json")"
-echo "Candidats éligibles : $n"
+result="$(bash "$SCRIPT_DIR/lib/next-task.sh")"
+n="$(printf '%s' "$result" | jq -r '.eligible_count')"
 if [ "$n" -eq 0 ]; then
   echo "File vide : rien à traiter."
   exit 0
 fi
 
-pick="$(jq -c '.[0]' "$tmp/eligible.json")"
-repo="$(printf '%s' "$pick" | jq -r '.repo')"
-kind="$(printf '%s' "$pick" | jq -r '.kind')"
-number="$(printf '%s' "$pick" | jq -r '.number')"
-title="$(printf '%s' "$pick" | jq -r '.title')"
-
-case "$kind" in
-  migration)    dispatch_workflow="agent-migrate-latex.yml" ;;
-  conventions)  dispatch_workflow="agent-review-conventions.yml" ;;
-  fix)          dispatch_workflow="agent-fix-conventions.yml" ;;
-  *) echo "::error::nature de tâche inconnue : $kind"; exit 1 ;;
-esac
-target="${title#\[*\] }"
+repo="$(printf '%s' "$result" | jq -r '.repo')"
+kind="$(printf '%s' "$result" | jq -r '.kind')"
+number="$(printf '%s' "$result" | jq -r '.number')"
+target="$(printf '%s' "$result" | jq -r '.target')"
+dispatch_workflow="$(printf '%s' "$result" | jq -r '.workflow')"
 
 echo "Choisi : $repo#$number [$kind] — $target"
 
@@ -202,55 +129,12 @@ set -e
 # Revérification post-run d'une migration (ocourses/agents#15) — « une PR
 # existe » ne suffit pas : un diff vide fermerait l'issue completed, que le
 # checker hebdomadaire recréerait identique au passage suivant (dédup sur
-# les issues ouvertes seulement) → boucle de runs vides. On re-scanne donc
-# la branche de la PR avec le MÊME composant que le détecteur
-# (scripts/lib/template-scan.sh) : succès seulement si plus aucun nom de
-# ocots-compat.sty ne subsiste dans la chaîne \input du pilote cible.
-#
-# La file tourne dans ocourses/agents, sans checkout du dépôt de cours : la
-# branche est clonée en shallow dans $tmp, et ocots-compat.sty est récupéré
-# au SHA épinglé par le sous-module (gitlink) de CETTE branche — la liste
-# des noms legacy reste extraite du fichier à chaque appel, jamais codée en
-# dur (le template évolue vite ; une liste figée serait fausse en quelques
-# semaines).
-#
-# usage : rescan_migration <repo> <branche-pr> <pilote>
-#   stdout : la ligne TSV "STATUT<TAB>pilote<TAB>noms" du script partagé
-#   rc ≠ 0 : revérification impossible (clone/API en échec) — traitée comme
-#            un échec, jamais comme un succès (un succès non vérifié rouvre
-#            la boucle qu'on corrige ici).
+# les issues ouvertes seulement) → boucle de runs vides. Extraite dans
+# scripts/lib/rescan-migration.sh (voir son en-tête) pour être appelée aussi
+# par un tick local — même composant, même verdict, dans les deux chemins.
 # ---------------------------------------------------------------------------
 rescan_migration() {
-  local repo="$1" branch="$2" target="$3"
-  local dir="$tmp/rescan" sub_json sub_sha tpl_repo
-  rm -rf "$dir"; mkdir -p "$dir"
-
-  # PAT en en-tête (comme actions/checkout), pas dans l'URL : éviter toute
-  # fuite du jeton dans un message d'erreur de git.
-  git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')" \
-    clone --quiet --depth 1 --branch "$branch" "https://github.com/$repo" "$dir/repo" || return 1
-
-  if [ -f "$dir/repo/${TEMPLATE_DIR}/tex/ocots-compat.sty" ]; then
-    # Template vendored (fichiers en dur, pas un sous-module) : compat lu
-    # directement dans le clone.
-    cp "$dir/repo/${TEMPLATE_DIR}/tex/ocots-compat.sty" "$dir/ocots-compat.sty"
-  else
-    # Gitlink du sous-module template sur CETTE branche → SHA épinglé +
-    # dépôt source (le chemin TEMPLATE_DIR suit la même convention que le
-    # checker). Le sous-module n'est pas matérialisé par le clone shallow.
-    sub_json="$(gh api "repos/$repo/contents/${TEMPLATE_DIR}?ref=$branch")" || return 1
-    sub_sha="$(printf '%s' "$sub_json" | jq -r '.sha // empty')"
-    tpl_repo="$(printf '%s' "$sub_json" | jq -r '.submodule_git_url // empty' \
-      | sed -E 's#^(git@github\.com:|https://github\.com/)##; s#\.git$##')"
-    if [ -z "$sub_sha" ] || [ -z "$tpl_repo" ]; then
-      echo "gitlink ${TEMPLATE_DIR} illisible sur ${repo}@${branch}" >&2
-      return 1
-    fi
-    gh api "repos/$tpl_repo/contents/tex/ocots-compat.sty?ref=$sub_sha" \
-      -H "Accept: application/vnd.github.raw" > "$dir/ocots-compat.sty" || return 1
-  fi
-
-  (cd "$dir/repo" && bash "$SCAN" "$dir/ocots-compat.sty" "$target")
+  bash "$SCRIPT_DIR/lib/rescan-migration.sh" "$1" "$2" "$3"
 }
 
 # ---------------------------------------------------------------------------

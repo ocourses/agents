@@ -204,9 +204,12 @@ scripts/scaffold.sh           couche A — mise en place du chantier
 scripts/run-opencode.sh       couche B — assemble AGENTS.md + lance OpenCode
 scripts/finalize.sh           couche A — clôture (suivi + bilan)
 scripts/checkers/             un détecteur par fichier (template-migration, conventions, …)
-scripts/lib/template-scan.sh  détection template partagée : checker (batch, tous pilotes) + queue-next.sh (revérification post-run, un pilote)
-scripts/queue-next.sh         dépile une issue de la file, déclenche, attend
+scripts/lib/template-scan.sh  détection template partagée : checker (batch, tous pilotes) + rescan-migration.sh (un pilote)
+scripts/lib/next-task.sh      sélection de la prochaine tâche — SOURCE UNIQUE, appelée par queue-next.sh et par LOCAL-QUEUE.md
+scripts/lib/rescan-migration.sh  revérification post-run d'une migration — SOURCE UNIQUE, appelée par queue-next.sh et par LOCAL-QUEUE.md
+scripts/queue-next.sh         dépile une tâche de la file (via lib/next-task.sh), déclenche, attend
 scripts/check-secrets-expiry.sh  relit config/secrets-expiry.txt, alerte à J-30
+LOCAL-QUEUE.md                 protocole — traiter des tickets de la file en local (Claude Code, sans GitHub Actions)
 config/opencode.json          provider Albert, permissions
 config/AGENTS.base.md         socle commun injecté dans AGENTS.md
 config/course-repos.txt       dépôts de cours surveillés par la file d'attente
@@ -480,30 +483,20 @@ envisagé et écarté : GitHub ne permettant pas de vraie transaction, un tel
 validateur ne ferait que détecter une course après coup — exactement ce que
 fait déjà le ramasse-miettes ci-dessus, pour moins de complexité.)*
 
-**Confier une issue à une session Claude Code locale** — modèle à copier en
-adaptant `<repo>` et `<issue>` :
+**Confier LA FILE (pas une issue précise) à une session Claude Code locale** —
+voir [`LOCAL-QUEUE.md`](LOCAL-QUEUE.md) : protocole complet, un tick à la
+fois, qui appelle `scripts/lib/next-task.sh` pour sélectionner **la même**
+prochaine tâche que `queue-next.sh` choisirait (pas une issue désignée à la
+main), passe par `scaffold.sh` / `finalize.sh` pour un chantier et une trace
+identiques à un run automatisé, et vérifie le succès avec le **même**
+critère (`scripts/lib/rescan-migration.sh` pour une migration). Invocation
+type :
 
-> Tu vas traiter l'issue `<repo>#<issue>` de la file d'attente
-> `ocourses/agents`.
->
-> 1. Vérifie d'abord : `bash scripts/claim-issue.sh status <repo> <issue>`
->    (dans un clone de `ocourses/agents`, avec `gh` déjà authentifié). Si le
->    résultat n'est pas `libre`, **arrête-toi et préviens-moi** — ne touche à
->    rien.
-> 2. Réclame : `bash scripts/claim-issue.sh claim <repo> <issue> "Claude Code
->    local (Olivier)"`. Si ça échoue, quelqu'un t'a devancé entre les deux
->    étapes — arrête-toi.
-> 3. Regarde le label présent sur l'issue (`template-migration`,
->    `conventions-candidate` ou `conventions-style`) et suis les instructions
->    du rôle correspondant (`roles/latex-template-migrator.md`,
->    `roles/conventions-reviewer.md` ou `roles/conventions-fixer.md` dans
->    `ocourses/agents`) — mêmes consignes que l'agent automatisé.
-> 4. Ouvre une PR dont le corps contient `Closes #<issue>` (lien natif
->    GitHub, fermeture automatique à la fusion).
-> 5. À la fin : succès → `bash scripts/claim-issue.sh release <repo>
->    <issue>` ; échec → `bash scripts/claim-issue.sh fail <repo> <issue>
->    "<raison>"`. Dans les deux cas, ne me laisse jamais l'issue réclamée sans
->    rien d'autre.
+> Suis `LOCAL-QUEUE.md`, fais 1 tick.
+
+`claim-issue.sh` reste la seule source du protocole de réclamation
+(`status` / `claim` / `release` / `fail`, ci-dessus) : `LOCAL-QUEUE.md`
+l'utilise à chaque tick, il ne le remplace pas.
 
 ## Rôles fournis
 
