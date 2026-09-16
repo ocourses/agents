@@ -109,6 +109,7 @@ GitHub — seul le git (clone/branche/commit/push) et la lecture de
    TASK="<task>" \
    TITLE="<task_title>" \
    LINK_ISSUE="<number>" \
+   CLOSE_ON_MERGE="<false si kind=conventions, sinon omettre>" \
    RUN_ID="local-$(date -u +%Y%m%dT%H%M%SZ)" \
    MODEL="claude-code-local" \
    REPO="<repo>" \
@@ -122,6 +123,17 @@ GitHub — seul le git (clone/branche/commit/push) et la lecture de
    n'est pas un identifiant Albert : garde `claude-code-local` (ou équivalent)
    pour que le fichier de suivi distingue au premier coup d'œil un run local
    d'un run automatisé.
+
+   **`CLOSE_ON_MERGE=false` est obligatoire pour `kind: conventions`**
+   (triage) : cette PR ne livre aucun correctif de contenu, et `LINK_ISSUE`
+   (la même issue) doit pouvoir rester ouverte après fusion (promue
+   `conventions-style`, en attente de `conventions-fixer`) — sinon la fusion
+   ferme nativement l'issue via `Closes #N` et la sort de la file **avant**
+   que le correctif n'ait eu lieu. Bug réel rencontré et corrigé après un
+   premier tick (`mesure-integration-enseignants#125` / PR #169, fermée à
+   tort à la fusion, rouverte à la main). Pour `migration`/`fix`, omettre
+   `CLOSE_ON_MERGE` (défaut `true`) : fusionner la PR livre le correctif,
+   fermer l'issue est le comportement voulu.
 
    Identité git : `scaffold.sh` committe sous `ocourses-agent`, comme un run
    automatisé — voulu (même décorum, même trace), la distinction se lit dans

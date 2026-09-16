@@ -167,7 +167,8 @@ jobs:
 | `agents_ref` | `main` | ref de ce dépôt |
 | `base_branch` | branche par défaut | base de la PR |
 | `assignee` | `ocots` | login assigné aux issue / PR |
-| `link_issue` | *(vide)* | numéro d'une **autre** issue du dépôt appelant à fermer nativement (`Closes #N` supplémentaire dans la PR), en plus de la propre issue de suivi créée par ce workflow — sert pour une issue métier qui existe déjà avant le run (voir plus bas) |
+| `link_issue` | *(vide)* | numéro d'une issue métier qui existe déjà avant le run (template-migration, conventions-candidate, conventions-style) — sert ELLE-MÊME de fil de suivi, aucune issue dédiée n'est créée en plus |
+| `close_on_merge` | `true` | si `"false"`, la PR n'ajoute pas `Closes #N` : à utiliser pour un rôle de **triage** (`conventions-reviewer`) dont la PR ne livre aucun correctif de contenu et dont `link_issue` doit pouvoir rester ouverte après fusion — sinon la fusion la ferme et la sort de la file avant que le vrai correctif (`conventions-fixer`) n'ait eu lieu |
 
 ### Secrets (au niveau du **dépôt** appelant)
 

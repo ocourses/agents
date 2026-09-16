@@ -9,9 +9,17 @@
 #   LINK_ISSUE   optionnel — numéro d'une issue métier qui existe déjà avant
 #                le run (template-migration, conventions-candidate,
 #                conventions-style). Si fourni, AUCUNE issue de suivi n'est
-#                créée : LINK_ISSUE sert elle-même de fil de suivi (elle est
-#                fermée nativement via "Closes #N" à la fusion de la PR). Sans
-#                ça, une issue de suivi dédiée est créée comme avant.
+#                créée : LINK_ISSUE sert elle-même de fil de suivi. Sans ça,
+#                une issue de suivi dédiée est créée comme avant.
+#   CLOSE_ON_MERGE  défaut "true" — si différent de "false", la PR ferme
+#                nativement ("Closes #N") l'issue de suivi (dédiée, ou
+#                LINK_ISSUE) à sa fusion. À mettre à "false" pour un rôle de
+#                TRIAGE (conventions-reviewer) dont la PR ne livre aucun
+#                correctif de contenu et dont LINK_ISSUE peut rester ouverte
+#                après fusion (promue conventions-style, en attente d'un
+#                rôle correcteur) : la fermer à la fusion la sortirait de la
+#                file sans que le correctif n'ait jamais eu lieu (bug
+#                rencontré sur mesure-integration-enseignants#125 / PR #169).
 # Sorties ($GITHUB_OUTPUT) : issue, pr, branch, tracking, slug, base_branch, task
 #   task = TASK potentiellement enrichie du body de LINK_ISSUE (cf. plus bas) —
 #   c'est CETTE valeur que le step suivant (run-opencode.sh) doit utiliser,
@@ -21,6 +29,7 @@ set -euo pipefail
 : "${ROLE:?}" "${TASK:?}" "${RUN_ID:?}" "${REPO:?}"
 ASSIGNEE="${ASSIGNEE:-ocots}"
 LINK_ISSUE="${LINK_ISSUE:-}"
+CLOSE_ON_MERGE="${CLOSE_ON_MERGE:-true}"
 BASE_BRANCH="${BASE_BRANCH:-$(gh repo view "$REPO" --json defaultBranchRef -q .defaultBranchRef.name)}"
 TITLE="${TITLE:-$ROLE}"
 MODEL="${MODEL:-?}"
@@ -123,11 +132,13 @@ git push -u origin "$BRANCH"
 
 # --- PR Draft ---
 # LINK_ISSUE vaut déjà ISSUE ci-dessus (pas de doublon) : une seule ligne
-# "Closes #N" suffit, elle ferme l'issue métier d'origine à la fusion.
+# "Closes #N" suffit, elle ferme l'issue métier d'origine à la fusion — sauf
+# CLOSE_ON_MERGE=false (rôle de triage, cf. en-tête), où fermer à la fusion
+# sortirait l'issue de la file avant que le vrai correctif n'ait eu lieu.
+CLOSES_LINE=""
+[ "$CLOSE_ON_MERGE" = "false" ] || CLOSES_LINE="Closes #$ISSUE"$'\n\n'
 cat > "$tmp/pr.md" <<EOF
-Closes #$ISSUE
-
-**Rôle :** \`$ROLE\`
+${CLOSES_LINE}**Rôle :** \`$ROLE\`
 **Tâche :** $TASK
 
 ---
