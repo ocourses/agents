@@ -113,8 +113,11 @@ fi
 gh label create "$LABEL" --repo "$REPO" --color 0e8a16 \
   --description "Document détecté non conforme au template ocots" 2>/dev/null || true
 
+# --limit 300 : sans limite explicite `gh issue list` tronque à 30 — les
+# titres au-delà sortiraient de la dédup et un pilote déjà signalé serait
+# re-signalé en doublon (ocourses/agents#14).
 existing_titles="$(gh issue list --repo "$REPO" --label "$LABEL" --state open \
-  --json title --jq '.[].title' 2>/dev/null || true)"
+  --json title --jq '.[].title' --limit 300 2>/dev/null || true)"
 
 n_missing=0; n_legacy=0; n_skipped=0
 
