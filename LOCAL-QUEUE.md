@@ -34,10 +34,55 @@ voir « Enchaîner plusieurs tickets » plus bas pour pourquoi.
   checkouter à distance comme `agent.yml`, tu cloneras le dépôt cible toi-même
   s'il ne l'est pas déjà).
 
+## Sans `gh` (pas de CLI GitHub dans la session)
+
+Certaines sessions Claude Code (ex. Claude Code sur le web) n'ont pas `gh` et
+doivent passer par des outils MCP GitHub dédiés pour toute interaction
+GitHub — le protocole ci-dessous suppose `gh`, donc dans ce cas les scripts
+ne peuvent pas tourner tels quels. Validé en pratique par un tick réel
+(`ocourses/mesure-integration-enseignants#125`, PR #169) :
+
+- **git reste inchangé** — clone, branche, commit, push en direct (Bash +
+  git). Rien de spécifique à `gh` là-dedans.
+- **`scripts/lib/next-task.sh` (lecture seule) tourne réellement**, mais avec
+  un `gh` factice qui **rejoue** des données déjà récupérées via l'outil MCP
+  `list_issues` (un appel par (dépôt, label) parmi `template-migration` /
+  `conventions-candidate` / `conventions-style` / `agent:dispatched`) —
+  aucun appel réseau caché dans le mock, seulement du rejeu. **Piège
+  rencontré** : `gh issue list --json createdAt` renvoie la clé camelCase
+  `createdAt`, alors que `list_issues` (MCP) renvoie `created_at` (snake_case)
+  — à renommer avant de rejouer, sous peine de casser **silencieusement** le
+  tri (`sort_by(.createdAt)` ne lève pas d'erreur sur une clé absente, il
+  traite juste tout comme égal et la sélection dérive vers l'ordre
+  d'insertion au lieu de la vraie ancienneté).
+- **`claim-issue.sh` / `scaffold.sh` / `finalize.sh` (écriture) ne peuvent
+  pas s'exécuter** — un script bash ne peut pas appeler un outil MCP.
+  Reproduis leurs étapes à la main, avec cette correspondance :
+
+  | Le script ferait… | Équivalent MCP |
+  |---|---|
+  | `gh issue view --json ...` | `issue_read` (method `get`) |
+  | `gh issue edit --add-label` / `--remove-label` | `issue_write` (method `update`, `labels`: l'**ensemble complet** désiré — ce n'est pas un ajout/retrait, relis les labels actuels d'abord si besoin) |
+  | `gh issue comment` | `add_issue_comment` |
+  | `gh issue close --reason completed` | `issue_write` (`state: closed`, `state_reason: completed`) |
+  | `gh issue create` | `issue_write` (method `create`) |
+  | `gh pr create --draft` | `create_pull_request` (`draft: true`) — pas de paramètre assignee, un `issue_write` séparé sur le numéro de la PR fait l'assignation |
+  | `gh pr comment` | `add_issue_comment` (une PR est une issue côté API — même `issue_number`) |
+  | `gh pr view --json state` | `pull_request_read` |
+  | `gh label create` (idempotent) | pas d'équivalent testé — suppose que le label existe déjà dans le dépôt (créé par un run antérieur, ce qui est le cas pour `agent`/`agent:dispatched`/`agent:failed`/`conventions-style` sur les trois dépôts de cours) |
+
+  `scripts/lib/rescan-migration.sh` a la même limite pour son chemin
+  sous-module (`gh api .../contents/...` → `get_file_contents`), pas encore
+  validé en pratique (le tick de validation était un triage conventions, pas
+  une migration).
+
 ## Un tick
 
 Toutes les commandes `scripts/*.sh` ci-dessous sont dans `ocourses/agents` ;
-`<agents>` désigne le chemin de ce clone.
+`<agents>` désigne le chemin de ce clone. Sans `gh` (section précédente),
+suis la même séquence mais avec les équivalents MCP pour toute interaction
+GitHub — seul le git (clone/branche/commit/push) et la lecture de
+`next-task.sh` passent par les commandes telles quelles.
 
 1. **Sélectionner** :
    ```bash
