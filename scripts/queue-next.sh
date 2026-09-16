@@ -26,8 +26,16 @@
 #
 # `conventions-style` (verdict confirmé, écrit par conventions-reviewer) est
 # ensuite repris par conventions-fixer, qui corrige le texte pour les points
-# confirmés et ouvre une PR — même mécanique de succès que `migration`
-# (recherche de PR par titre, fermeture de l'issue si trouvée).
+# confirmés et ouvre une PR — succès = PR retrouvée sur la branche du run.
+#
+# `migration` ajoute une REVÉRIFICATION DE FOND à ce critère : « une PR
+# existe » seul laisserait passer un diff vide — l'issue fermée completed
+# serait recréée identique par le checker hebdomadaire, qui ne déduplique
+# que sur les issues ouvertes (ocourses/agents#15). Après le run, la
+# branche de la PR est re-scannée par scripts/lib/template-scan.sh — le
+# MÊME composant que le détecteur checkers/template-migration.sh, pour que
+# les deux verdicts ne divergent jamais. Succès = PR trouvée ET plus aucun
+# nom de ocots-compat.sty dans la chaîne \input du pilote cible.
 #
 # Entrées :
 #   GH_TOKEN            PAT (PAS le github.token par défaut : celui-ci n'a de
@@ -52,6 +60,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COURSE_REPOS_FILE="${COURSE_REPOS_FILE:-config/course-repos.txt}"
 STALE_HOURS="${STALE_HOURS:-3}"
+# Revérification post-run des migrations (voir en-tête) : chemin du
+# sous-module template dans le dépôt de cours (même convention TEMPLATE_DIR
+# que le checker) et script de détection partagé avec lui.
+TEMPLATE_DIR="${TEMPLATE_DIR:-template}"
+SCAN="${SCAN:-${SCRIPT_DIR}/lib/template-scan.sh}"
 # Dupliqués depuis claim-issue.sh (doivent rester identiques) : nécessaires
 # ici pour filtrer les candidats côté lecture (gh issue list --label, jq).
 DISPATCHED_LABEL="agent:dispatched"
@@ -183,18 +196,76 @@ rc=$?
 set -e
 
 # ---------------------------------------------------------------------------
+# Revérification post-run d'une migration (ocourses/agents#15) — « une PR
+# existe » ne suffit pas : un diff vide fermerait l'issue completed, que le
+# checker hebdomadaire recréerait identique au passage suivant (dédup sur
+# les issues ouvertes seulement) → boucle de runs vides. On re-scanne donc
+# la branche de la PR avec le MÊME composant que le détecteur
+# (scripts/lib/template-scan.sh) : succès seulement si plus aucun nom de
+# ocots-compat.sty ne subsiste dans la chaîne \input du pilote cible.
+#
+# La file tourne dans ocourses/agents, sans checkout du dépôt de cours : la
+# branche est clonée en shallow dans $tmp, et ocots-compat.sty est récupéré
+# au SHA épinglé par le sous-module (gitlink) de CETTE branche — la liste
+# des noms legacy reste extraite du fichier à chaque appel, jamais codée en
+# dur (le template évolue vite ; une liste figée serait fausse en quelques
+# semaines).
+#
+# usage : rescan_migration <repo> <branche-pr> <pilote>
+#   stdout : la ligne TSV "STATUT<TAB>pilote<TAB>noms" du script partagé
+#   rc ≠ 0 : revérification impossible (clone/API en échec) — traitée comme
+#            un échec, jamais comme un succès (un succès non vérifié rouvre
+#            la boucle qu'on corrige ici).
+# ---------------------------------------------------------------------------
+rescan_migration() {
+  local repo="$1" branch="$2" target="$3"
+  local dir="$tmp/rescan" sub_json sub_sha tpl_repo
+  rm -rf "$dir"; mkdir -p "$dir"
+
+  # PAT en en-tête (comme actions/checkout), pas dans l'URL : éviter toute
+  # fuite du jeton dans un message d'erreur de git.
+  git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')" \
+    clone --quiet --depth 1 --branch "$branch" "https://github.com/$repo" "$dir/repo" || return 1
+
+  if [ -f "$dir/repo/${TEMPLATE_DIR}/tex/ocots-compat.sty" ]; then
+    # Template vendored (fichiers en dur, pas un sous-module) : compat lu
+    # directement dans le clone.
+    cp "$dir/repo/${TEMPLATE_DIR}/tex/ocots-compat.sty" "$dir/ocots-compat.sty"
+  else
+    # Gitlink du sous-module template sur CETTE branche → SHA épinglé +
+    # dépôt source (le chemin TEMPLATE_DIR suit la même convention que le
+    # checker). Le sous-module n'est pas matérialisé par le clone shallow.
+    sub_json="$(gh api "repos/$repo/contents/${TEMPLATE_DIR}?ref=$branch")" || return 1
+    sub_sha="$(printf '%s' "$sub_json" | jq -r '.sha // empty')"
+    tpl_repo="$(printf '%s' "$sub_json" | jq -r '.submodule_git_url // empty' \
+      | sed -E 's#^(git@github\.com:|https://github\.com/)##; s#\.git$##')"
+    if [ -z "$sub_sha" ] || [ -z "$tpl_repo" ]; then
+      echo "gitlink ${TEMPLATE_DIR} illisible sur ${repo}@${branch}" >&2
+      return 1
+    fi
+    gh api "repos/$tpl_repo/contents/tex/ocots-compat.sty?ref=$sub_sha" \
+      -H "Accept: application/vnd.github.raw" > "$dir/ocots-compat.sty" || return 1
+  fi
+
+  (cd "$dir/repo" && bash "$SCAN" "$dir/ocots-compat.sty" "$target")
+}
+
+# ---------------------------------------------------------------------------
 # Vérification du succès : le critère dépend de la nature de la tâche.
 #
 # migration et fix partagent la même mécanique — l'agent (latex-template-
 # migrator / conventions-fixer) fait le travail directement et ouvre sa PR
 # via scaffold.sh (titre "[agent] <Titre> <cible>", cf. agent-migrate-latex.yml
-# / agent-fix-conventions.yml) : on la retrouve par titre, PR trouvée = succès,
-# l'issue d'origine est fermée (le lien natif link_issue la referait de toute
-# façon à la fusion, mais on ne l'attend pas — même convention que migration).
+# / agent-fix-conventions.yml) : on la retrouve par branche, PR trouvée =
+# succès, l'issue d'origine est fermée (le lien natif link_issue la referait
+# de toute façon à la fusion, mais on ne l'attend pas — même convention que
+# migration). migration AJOUTE la revérification ci-dessus à ce critère ;
+# fix garde « PR trouvée » seul.
 # conventions (triage) est différent : l'agent modifie l'issue lui-même,
 # jamais une PR de contenu ; on vérifie son état après coup.
 # ---------------------------------------------------------------------------
 success=0
+fail_reason=""
 case "$kind" in
   migration|fix)
     # Recherche par NOM DE BRANCHE (`agent/<slug>-<run_id>`, cf. scaffold.sh),
@@ -209,18 +280,38 @@ case "$kind" in
       echo "::warning::$repo — gh pr list a échoué après le run ($run_url) : $(cat "$tmp/pr-list.err")"
       pr_json='[]'
     fi
-    pr_url="$(printf '%s' "$pr_json" | jq -r --arg suffix "-${run_id}" \
-      '[.[] | select(.headRefName | startswith("agent/") and endswith($suffix))] | .[0].url // empty')"
+    pr_entry="$(printf '%s' "$pr_json" | jq -c --arg suffix "-${run_id}" \
+      '[.[] | select(.headRefName | startswith("agent/") and endswith($suffix))] | .[0] // empty')"
+    pr_url="$(printf '%s' "$pr_entry" | jq -r '.url // empty')"
+    pr_branch="$(printf '%s' "$pr_entry" | jq -r '.headRefName // empty')"
     if [ "$rc" -eq 0 ] && [ -n "$pr_url" ]; then
-      success=1
-      gh issue comment "$number" --repo "$repo" \
-        --body "Run terminé → PR ouverte : $pr_url (reste en **Draft**, relecture humaine avant fusion)." >/dev/null
-      gh issue close "$number" --repo "$repo" --reason completed >/dev/null
-      # Issue fermée : `agent:dispatched` n'a plus d'effet sur l'éligibilité,
-      # mais on le retire quand même pour que `claim-issue.sh status` reste
-      # exact si l'issue est rouverte un jour (revert de la PR, etc.).
-      bash "$SCRIPT_DIR/claim-issue.sh" release "$repo" "$number" >/dev/null
-      echo "OK : $pr_url"
+      if [ "$kind" = "migration" ]; then
+        set +e
+        verdict="$(rescan_migration "$repo" "$pr_branch" "$target" 2>"$tmp/rescan.err")"
+        vrc=$?
+        set -e
+        if [ "$vrc" -ne 0 ] || [ -z "$verdict" ]; then
+          fail_reason="PR ouverte ($pr_url) mais revérification impossible — $(tail -n 1 "$tmp/rescan.err" 2>/dev/null || echo 'voir les logs du tick')"
+        else
+          vstatus="$(cut -f1 <<<"$verdict")"
+          vnames="$(cut -f3- <<<"$verdict")"
+          echo "Revérification $target : $vstatus${vnames:+ ($vnames)}"
+          if [ "$vstatus" != "CLEAN" ]; then
+            fail_reason="PR ouverte ($pr_url) mais \`$target\` reste non conforme (statut $vstatus)${vnames:+ — noms de \`ocots-compat.sty\` encore présents : $vnames} — le diff n'élimine pas tous les anciens noms."
+          fi
+        fi
+      fi
+      if [ -z "$fail_reason" ]; then
+        success=1
+        gh issue comment "$number" --repo "$repo" \
+          --body "Run terminé → PR ouverte : $pr_url (reste en **Draft**, relecture humaine avant fusion)." >/dev/null
+        gh issue close "$number" --repo "$repo" --reason completed >/dev/null
+        # Issue fermée : `agent:dispatched` n'a plus d'effet sur l'éligibilité,
+        # mais on le retire quand même pour que `claim-issue.sh status` reste
+        # exact si l'issue est rouverte un jour (revert de la PR, etc.).
+        bash "$SCRIPT_DIR/claim-issue.sh" release "$repo" "$number" >/dev/null
+        echo "OK : $pr_url"
+      fi
     fi
     ;;
   conventions)
@@ -243,7 +334,7 @@ esac
 
 if [ "$success" -ne 1 ]; then
   bash "$SCRIPT_DIR/claim-issue.sh" fail "$repo" "$number" \
-    "run terminé en échec, ou sans résultat exploitable : $run_url — vérifier les logs et le fichier de suivi \`.agents/runs/\`"
+    "${fail_reason:-run terminé en échec, ou sans résultat exploitable : $run_url — vérifier les logs et le fichier de suivi \`.agents/runs/\`}"
   echo "ÉCHEC (rc=$rc) — voir $run_url"
 fi
 

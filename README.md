@@ -44,9 +44,13 @@ fait vraiment.
    · finalize.sh : bilan en commentaire de PR, reste en Draft
 
 4. queue-next.sh reprend la main
-   · PR trouvée → ferme l'issue de détection (#1), succès — indépendamment
-     du lien natif ci-dessus, qui ne referme #1 qu'à la fusion (souvent
-     bien après, une fois la Draft relue)
+   · PR trouvée ET branche re-scannée propre → ferme l'issue de détection
+     (#1), succès — indépendamment du lien natif ci-dessus, qui ne referme
+     #1 qu'à la fusion (souvent bien après, une fois la Draft relue).
+     Le re-scan = scripts/lib/template-scan.sh (le même composant que le
+     détecteur) sur la branche de la PR : plus aucun nom de
+     ocots-compat.sty dans la chaîne \input du pilote. Un diff vide ou
+     incomplet n'est donc plus un succès (ocourses/agents#15).
    · sinon → label agent:failed sur l'issue de détection, pas de retentative
 
 5. Relecture humaine de la PR Draft (latex-pr.yml compile dès "Ready for
@@ -109,7 +113,7 @@ candidat, un agent tranche.
 |---|---|---|
 | Le script seul peut-il conclure ? | Oui — macro `my*` présente ou non, fait binaire | Non, jamais — d'où le passage obligé par l'agent |
 | L'agent modifie… | le contenu du cours | seulement l'issue (jamais le contenu) |
-| Critère de succès de la file | une PR est ouverte | l'issue candidate a changé d'état |
+| Critère de succès de la file | une PR est ouverte **et** le re-scan de sa branche est propre | l'issue candidate a changé d'état |
 | Résultat pour l'humain | une PR Draft à relire | une issue triée (fermée ou confirmée) à traiter |
 
 ## Séquence d'un run
@@ -200,6 +204,7 @@ scripts/scaffold.sh           couche A — mise en place du chantier
 scripts/run-opencode.sh       couche B — assemble AGENTS.md + lance OpenCode
 scripts/finalize.sh           couche A — clôture (suivi + bilan)
 scripts/checkers/             un détecteur par fichier (template-migration, conventions, …)
+scripts/lib/template-scan.sh  détection template partagée : checker (batch, tous pilotes) + queue-next.sh (revérification post-run, un pilote)
 scripts/queue-next.sh         dépile une issue de la file, déclenche, attend
 scripts/check-secrets-expiry.sh  relit config/secrets-expiry.txt, alerte à J-30
 config/opencode.json          provider Albert, permissions
@@ -347,7 +352,7 @@ tâches, trois workflows cibles :
 
 | Label source | Dispatché vers | Rôle | Ce que « succès » veut dire |
 |---|---|---|---|
-| `template-migration` | `agent-migrate-latex.yml` | `latex-template-migrator` | une PR `[agent] Migration <fichier>` est ouverte |
+| `template-migration` | `agent-migrate-latex.yml` | `latex-template-migrator` | une PR `[agent] Migration <fichier>` est ouverte **et** la revérification (`scripts/lib/template-scan.sh` sur la branche de la PR) ne trouve plus aucun nom de `ocots-compat.sty` dans la chaîne `\input` du pilote |
 | `conventions-candidate` | `agent-review-conventions.yml` | `conventions-reviewer` | l'issue candidate n'est plus `conventions-candidate` (fermée ou promue `conventions-style`) |
 | `conventions-style` | `agent-fix-conventions.yml` | `conventions-fixer` | une PR `[agent] Correction conventions <fichier>` est ouverte |
 
@@ -430,8 +435,9 @@ dépôt.
 ### Comportement en échec
 
 Un run qui échoue — ou, selon le type de tâche, dont la PR n'est pas
-retrouvée (migration) ou dont l'issue candidate n'a pas changé d'état
-(conventions) — **n'est pas retenté automatiquement** : l'issue reçoit le
+retrouvée ou dont la revérification trouve encore des noms de
+`ocots-compat.sty` (migration) ou dont l'issue candidate n'a pas changé
+d'état (conventions) — **n'est pas retenté automatiquement** : l'issue reçoit le
 label `agent:failed` et un commentaire avec le lien du run. Retirer le label
 la remet en file. Ce choix délibéré évite qu'une cible cassée ne boucle en
 silence sur le budget Albert.
