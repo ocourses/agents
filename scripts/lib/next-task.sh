@@ -48,7 +48,12 @@ FAILED_LABEL="agent:failed"
 : "${GH_TOKEN:?GH_TOKEN requis (voir en-tête de ce script)}"
 [ -f "$COURSE_REPOS_FILE" ] || { echo "::error::$COURSE_REPOS_FILE introuvable" >&2; exit 1; }
 
-mapfile -t repos < <(grep -vE '^[[:space:]]*(#|$)' "$COURSE_REPOS_FILE")
+repos=()
+# while-read plutôt que mapfile : reste exécutable sous le bash 3.2 de macOS
+# (mapfile est un bashisme bash>=4, absent du bash système macOS) — même
+# convention que scripts/lib/template-scan.sh.
+while IFS= read -r repo_line; do repos+=("$repo_line"); done \
+  < <(grep -vE '^[[:space:]]*(#|$)' "$COURSE_REPOS_FILE")
 if [ "${#repos[@]}" -eq 0 ]; then
   echo "Aucun dépôt listé dans $COURSE_REPOS_FILE — rien à faire." >&2
   jq -n '{eligible_count:0}'

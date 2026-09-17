@@ -13,6 +13,17 @@ RUN_URL="https://github.com/${REPO}/actions/runs/${RUN_ID:-?}"
 now="$(date -u +%FT%TZ)"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 
+# Garde-fou cwd : TRACKING est un chemin relatif au clone du dépôt CIBLE
+# (celui de $REPO), pas à ocourses/agents d'où ce script est lui-même
+# invoqué. Lancé depuis le mauvais répertoire, `git add -A`/`commit`/`push`
+# ci-dessous agiraient sur un tout autre dépôt (silencieusement : TRACKING
+# absent n'est pas une erreur pour l'étape suivante) — arrêt explicite ici
+# plutôt que ce silence. Incident réel : run local du 2026-09-17.
+[ -f "$TRACKING" ] || {
+  echo "::error::TRACKING introuvable ($TRACKING) — ce script doit être lancé depuis le clone de $REPO, pas depuis ocourses/agents." >&2
+  exit 1
+}
+
 git config user.name  "ocourses-agent"
 git config user.email "agent@users.noreply.github.com"
 
