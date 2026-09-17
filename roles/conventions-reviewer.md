@@ -53,6 +53,15 @@ constat exploitable.
      exprès (voir `communes.md#c2`). Une exception légitime se signale
      normalement par un commentaire LaTeX dans le fichier — vérifie qu'il y
      est ; sinon, note-le comme à ajouter.
+   - **P2 sur un support `slides`** : `slides.md#sl4` remplace la phrase de
+     liaison par le titre de diapositive (P3/P4 ne s'appliquent pas aux
+     transparents), mais ne documente aucune exception nouvelle pour deux
+     boîtes sous un même `slide{titre}` — une chaîne confirmée reste
+     confirmée. Le remède attendu diffère toutefois de `poly` : signale dans
+     le constat que la correction probable est de **scinder chaque boîte sur
+     sa propre diapositive titrée** (cohérent avec SL3, « une idée par
+     diapositive »), pas d'ajouter une phrase de liaison — ce serait hors
+     idiome pour ce support.
 4. Si en lisant le fichier tu remarques une règle **non outillée**
    pertinente (P1, P4, P7 côté poly, ou l'équivalent du support concerné) —
    ajoute-la si c'est évident, sans repartir en relecture systématique du
