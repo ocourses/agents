@@ -103,9 +103,20 @@ for repo in "${repos[@]}"; do
       '.[] | . + {repo: $repo, kind: $kind}' >> "$tmp/candidates.jsonl" || true
 done
 
+# Tri secondaire sur .number explicite : GitHub n'horodate `createdAt` qu'à
+# la seconde, et un run de détection ouvre souvent plusieurs issues dans la
+# même seconde (observé en pratique, ocourses/agents — deux issues #123/#125
+# de repos/natures différents, même createdAt). Sans clé secondaire, l'ordre
+# entre égalités dépend de la stabilité de tri de jq et de l'ordre de
+# concaténation ci-dessus (migration avant conventions-candidate avant
+# conventions-style, par dépôt) — correct mais implicite, et fragile si cet
+# ordre de boucle change un jour. `.number` est monotone par dépôt : pas une
+# vraie horloge globale inter-dépôts, mais un choix stable et prévisible
+# (« le plus ancien numéro d'issue » a un sens intuitif), qui ne change rien
+# quand les dates diffèrent déjà.
 jq -s --arg d "$DISPATCHED_LABEL" --arg f "$FAILED_LABEL" '
   [ .[] | select(([.labels[].name] | index($d)) == null and ([.labels[].name] | index($f)) == null) ]
-  | sort_by(.createdAt)
+  | sort_by(.createdAt, .number)
 ' "$tmp/candidates.jsonl" > "$tmp/eligible.json"
 
 n="$(jq 'length' "$tmp/eligible.json")"
