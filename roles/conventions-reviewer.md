@@ -33,7 +33,14 @@ constat exploitable.
 1. `gh issue view <numéro>` — récupère la liste brute (fichier:ligne, règle,
    message) depuis le corps de l'issue candidate.
 2. Relis le **fichier réel** autour de chaque ligne signalée — pas seulement
-   le message du script, le contexte LaTeX.
+   le message du script, le contexte LaTeX. **Numéros de ligne périmés** : si
+   le contenu à la ligne indiquée ne correspond à rien de plausible pour la
+   règle citée, le fichier a probablement été édité depuis le passage du
+   détecteur (un commit humain sans rapport, par exemple) — ne conclus pas à
+   un point disparu. Ré-exécute `conventions/bin/verifier <règle> <chemin>`
+   sur le fichier actuel et retriangule sur cette sortie fraîche plutôt que
+   sur les numéros de l'issue ; signale le décalage dans le bilan (nombre de
+   lignes retrouvées, écart avec le signal d'origine).
 3. Pour chaque ligne, décide et justifie en une phrase :
    - **Confirmée** — c'est une vraie infraction.
    - **Faux positif** — l'outil se trompe (ex. P2 sur une ligne de `%` entre
