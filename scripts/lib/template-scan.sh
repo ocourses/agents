@@ -121,7 +121,16 @@ for pilot in "$@"; do
         [ -n "$m" ] && found_names="$found_names"$'\n'"$m"
       fi
       if [ -n "$cmds_re" ]; then
-        m=$(grep -oE "\\\\(${cmds_re})\\b" "$f" 2>/dev/null | sed -E 's/^\\//' || true)
+        # PAS de \b en frontière de droite : `_` compte comme caractère de
+        # mot pour grep, donc `\bNOM\b` ne matche jamais un nom suivi d'un
+        # `_` (`\ind_{...}`, `\FM_+(...)`) — silencieusement raté (bug réel,
+        # ocourses/mesure-integration-enseignants#130 : 2 noms sur 11 non
+        # détectés). On extrait plutôt CHAQUE token `\lettres` du fichier
+        # (s'arrête naturellement à `_`, `{`, etc., comme un vrai nom de
+        # macro) et on ne garde que ceux qui figurent tels quels dans
+        # cmds.txt — plus de frontière à définir, donc plus de faux négatif
+        # de ce genre.
+        m=$(grep -oE '\\[A-Za-z]+' "$f" 2>/dev/null | sed -E 's/^\\//' | grep -xFf "$tmp/cmds.txt" || true)
         [ -n "$m" ] && found_names="$found_names"$'\n'"$m"
       fi
     done
