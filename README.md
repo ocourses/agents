@@ -291,10 +291,13 @@ Effet différent selon le détecteur, à cause de leur mécanique respective :
 
 - **`conventions`** : un fichier exclu n'entre jamais dans le regroupement,
   donc une candidate déjà ouverte pour lui se referme **automatiquement** au
-  run suivant (même mécanique que « plus aucune trouvaille »).
-- **`template-migration`** n'a pas de fermeture automatique (aucune n'a
-  jamais existé, exclusion ou pas) : une issue déjà ouverte pour un document
-  désormais exclu doit être fermée **à la main**.
+  run suivant avec le motif GitHub `not planned` et un commentaire indiquant
+  qu'elle est désormais hors périmètre. Une candidate non exclue qui n'a plus
+  de trouvaille brute conserve sa fermeture `completed`.
+- **`template-migration`** : les issues déjà ouvertes sont également relues au
+  run suivant ; celles dont le pilote est désormais exclu se ferment
+  automatiquement avec le motif `not planned` et une explication. Les issues
+  simplement devenues conformes ne sont pas fermées par ce checker.
 
 ### Appel depuis un dépôt de cours
 

@@ -178,10 +178,17 @@ done < "$tmp/files.txt"
 while IFS=$'\t' read -r num title; do
   path="${title#\[conventions\] }"
   if ! grep -qxF "$path" "$tmp/files.txt"; then
-    gh issue comment "$num" --repo "$REPO" \
-      --body "Plus aucune trouvaille brute de \`verifier\` sur ce fichier. Fermeture automatique de ce candidat — rappel : zéro trouvaille ne certifie pas la conformité (règles non outillées, voir \`ocots-conventions/README.md\`)." >/dev/null
-    gh issue close "$num" --repo "$REPO" --reason completed >/dev/null
-    echo "  x candidat fermé (#$num) : $path"
+    if is_ignored "$path"; then
+      gh issue comment "$num" --repo "$REPO" \
+        --body "Cible désormais exclue par \`$IGNORE_FILE\` (motif correspondant au chemin \`$path\`). Fermeture automatique de ce candidat : il est hors périmètre des détecteurs." >/dev/null
+      gh issue close "$num" --repo "$REPO" --reason "not planned" >/dev/null
+      echo "  x candidat exclu fermé (#$num) : $path"
+    else
+      gh issue comment "$num" --repo "$REPO" \
+        --body "Plus aucune trouvaille brute de \`verifier\` sur ce fichier. Fermeture automatique de ce candidat — rappel : zéro trouvaille ne certifie pas la conformité (règles non outillées, voir \`ocots-conventions/README.md\`)." >/dev/null
+      gh issue close "$num" --repo "$REPO" --reason completed >/dev/null
+      echo "  x candidat fermé (#$num) : $path"
+    fi
     n_closed=$((n_closed+1))
   fi
 done < <(printf '%s' "$existing_json" | jq -r '.[] | "\(.number)\t\(.title)"')
