@@ -77,6 +77,11 @@ fi
 n_ignore=$(wc -l < "$tmp/ignore-patterns.txt")
 [ "$n_ignore" -gt 0 ] && echo "Exclusions ($IGNORE_FILE) : $n_ignore motif(s)"
 
+is_ignored() { # $1 = chemin
+  [ "$n_ignore" -gt 0 ] || return 1
+  grep -qEf "$tmp/ignore-patterns.txt" <<< "$1"
+}
+
 # ---------------------------------------------------------------------------
 # Repérer les fichiers pilotes (\documentclass), hors template/, conventions/
 # et les exclusions de IGNORE_FILE
@@ -115,11 +120,13 @@ gh label create "$LABEL" --repo "$REPO" --color 0e8a16 \
 
 # --limit 300 : sans limite explicite `gh issue list` tronque à 30 — les
 # titres au-delà sortiraient de la dédup et un pilote déjà signalé serait
-# re-signalé en doublon (ocourses/agents#14).
-existing_titles="$(gh issue list --repo "$REPO" --label "$LABEL" --state open \
-  --json title --jq '.[].title' --limit 300 2>/dev/null || true)"
+# re-signalé en doublon (ocourses/agents#14). Les numéros sont aussi récupérés
+# pour pouvoir nettoyer les issues dont le pilote est devenu exclu.
+existing_json="$(gh issue list --repo "$REPO" --label "$LABEL" --state open \
+  --json number,title --limit 300 2>/dev/null || echo '[]')"
+existing_titles="$(printf '%s' "$existing_json" | jq -r '.[].title')"
 
-n_missing=0; n_legacy=0; n_skipped=0
+n_missing=0; n_legacy=0; n_skipped=0; n_closed=0
 
 while IFS=$'\t' read -r status pilot found_names; do
   [ -n "$status" ] || continue
@@ -159,5 +166,17 @@ while IFS=$'\t' read -r status pilot found_names; do
   [ "$status" = "MISSING" ] && n_missing=$((n_missing+1)) || n_legacy=$((n_legacy+1))
 done < "$tmp/verdicts.tsv"
 
+# --- issues existantes dont le pilote est désormais exclu : fermer ----------
+while IFS=$'\t' read -r num title; do
+  pilot="${title#\[migration\] }"
+  if is_ignored "$pilot"; then
+    gh issue comment "$num" --repo "$REPO" \
+      --body "Pilote désormais exclu par \`$IGNORE_FILE\` (motif correspondant au chemin \`$pilot\`). Fermeture automatique : cette issue est hors périmètre des détecteurs." >/dev/null
+    gh issue close "$num" --repo "$REPO" --reason "not planned" >/dev/null
+    echo "  x issue migration exclue fermée (#$num) : $pilot"
+    n_closed=$((n_closed+1))
+  fi
+done < <(printf '%s' "$existing_json" | jq -r '.[] | "\(.number)\t\(.title)"')
+
 echo
-echo "Résumé : $n_missing MISSING, $n_legacy LEGACY, $n_skipped déjà conforme(s)/ignoré(s)."
+echo "Résumé : $n_missing MISSING, $n_legacy LEGACY, $n_skipped déjà conforme(s)/ignoré(s), $n_closed fermée(s) car exclue(s)."
