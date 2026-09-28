@@ -101,6 +101,17 @@ GitHub — seul le git (clone/branche/commit/push) et la lecture de
    Échec (déjà réclamée) → arrête-toi, ne recommence pas automatiquement sur
    une autre tâche sans qu'on te le demande.
 
+   **`kind: mecanique`** (issue `[nettoyer] <fichier>`, label
+   `conventions-mecanique`) : **pas de chantier ni de rôle**, aucun modèle.
+   Après la réclamation, depuis un clone à jour de `<repo>` (sous-modules
+   initialisés, `uv` installé) :
+   ```bash
+   REPO="<repo>" TARGET="<target>" ISSUE="<number>" \
+   bash <agents>/scripts/nettoyer-pr.sh
+   ```
+   puis passe directement à l'étape 5 (critère `mecanique`), et libère la
+   réclamation (`claim-issue.sh release`) au lieu de `finalize.sh`.
+
 3. **Chantier**, dans un clone de `<repo>` (le cloner s'il ne l'est pas déjà) :
    ```bash
    cd <clone-de-repo>
@@ -155,6 +166,7 @@ GitHub — seul le git (clone/branche/commit/push) et la lecture de
    | `migration` | PR ouverte **et** `bash <agents>/scripts/lib/rescan-migration.sh <repo> <branch> <target>` renvoie `CLEAN` |
    | `fix` | PR ouverte (`gh pr view <pr> --repo <repo> --json state` → `OPEN`) |
    | `conventions` | l'issue `<number>` n'est plus `conventions-candidate` (fermée, ou promue `conventions-style` par ton propre travail à l'étape 4) |
+   | `mecanique` | PR ouverte sur la branche `ocots-lint/nettoyer/<target>` (fermer alors l'issue, comme la file), ou issue déjà fermée par le script (rien à corriger) |
 
    Pour `migration`, un statut autre que `CLEAN` (ou une revérification
    impossible) est un **échec**, même si une PR existe — ne conclus jamais au

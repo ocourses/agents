@@ -27,7 +27,7 @@
 # `result="$(bash next-task.sh)"`).
 #   Rien d'éligible : {"eligible_count":0}
 #   Sinon           : {"eligible_count":N,"repo":"owner/repo",
-#                      "kind":"migration|conventions|fix","number":123,
+#                      "kind":"migration|conventions|fix|mecanique","number":123,
 #                      "title":"[migration] poly/foo.tex","target":"poly/foo.tex",
 #                      "role":"latex-template-migrator",
 #                      "workflow":"agent-migrate-latex.yml",
@@ -102,6 +102,11 @@ for repo in "${repos[@]}"; do
   | jq -c --arg repo "$repo" --arg kind "conventions" \
       '.[] | . + {repo: $repo, kind: $kind}' >> "$tmp/candidates.jsonl" || true
 
+  gh issue list --repo "$repo" --label "conventions-mecanique" --state open \
+    --json number,title,createdAt,labels --limit 200 2>/dev/null \
+  | jq -c --arg repo "$repo" --arg kind "mecanique" \
+      '.[] | . + {repo: $repo, kind: $kind}' >> "$tmp/candidates.jsonl" || true
+
   gh issue list --repo "$repo" --label "conventions-style" --state open \
     --json number,title,createdAt,labels --limit 200 2>/dev/null \
   | jq -c --arg repo "$repo" --arg kind "fix" \
@@ -157,6 +162,14 @@ case "$kind" in
     role="conventions-fixer"
     task_title="Correction conventions ${target}"
     task="Corrige les points CONFIRMÉS de l'issue conventions-style #${number} (fichier ${target}) en suivant le rôle conventions-fixer : relis l'issue (verdicts déjà rendus par conventions-reviewer, pas la sortie brute du détecteur), applique le remède documenté par ocots-conventions pour chaque règle citée, uniquement sur les points confirmés — rien d'autre dans le fichier. Un remède qui demande un choix d'auteur (ex. C2 entre deux formes réellement équivalentes) : ne tranche pas, laisse la ligne en l'état et signale-le dans le bilan."
+    ;;
+  mecanique)
+    # Voie mécanique d'ocots-lint : aucun modèle. Le workflow du cours
+    # (agent-nettoyer.yml -> nettoyer.yml) lance scripts/nettoyer-pr.sh.
+    workflow="agent-nettoyer.yml"
+    role="nettoyer"
+    task_title="Nettoyage ${target} (#${number})"
+    task="Corrige mécaniquement ${target} (issue [nettoyer] #${number}) : lancer scripts/nettoyer-pr.sh (ocots-lint nettoyer, aucun modèle), qui ouvre ou met à jour une PR Draft sur la branche ocots-lint/nettoyer/<fichier>."
     ;;
   *)
     echo "::error::nature de tâche inconnue : $kind" >&2

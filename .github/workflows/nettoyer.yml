@@ -1,0 +1,81 @@
+name: Voie mécanique (ocots-lint nettoyer, sans modèle)
+
+# Workflow RÉUTILISABLE : corrige UN fichier par `ocots-lint nettoyer` et
+# ouvre (ou met à jour) une PR Draft. Aucun modèle, aucun budget Albert.
+# Toute la logique est dans scripts/nettoyer-pr.sh (voir son en-tête).
+#
+# Côté cours : .github/workflows/agent-nettoyer.yml, déclenché par la file
+# (queue.yml) sur une issue `[nettoyer] <fichier>` (conventions-mecanique).
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        description: "Fichier .tex à corriger"
+        required: true
+        type: string
+      issue:
+        description: "Numéro de l'issue [nettoyer]"
+        required: true
+        type: string
+      runs-on:
+        description: "Runner, en JSON : '\"ubuntu-latest\"' ou '[\"self-hosted\"]'"
+        required: false
+        type: string
+        default: '"ubuntu-latest"'
+      agents_ref:
+        required: false
+        type: string
+        default: main
+    secrets:
+      AGENTS_READ_TOKEN:
+        required: true
+
+jobs:
+  nettoyer:
+    name: "Nettoyer · ${{ inputs.target }}"
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    steps:
+      - name: Checkout du dépôt appelant
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Checkout de la base d'agents
+        uses: actions/checkout@v4
+        with:
+          repository: ocourses/agents
+          ref: ${{ inputs.agents_ref }}
+          path: _agents
+          persist-credentials: false
+          token: ${{ secrets.AGENTS_READ_TOKEN }}
+
+      - name: Sous-modules (lecture via PAT)
+        env:
+          TOKEN: ${{ secrets.AGENTS_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -f .gitmodules || { echo "pas de sous-module"; exit 0; }
+          git config -f .gitmodules --get-regexp '^submodule\..*\.url$' \
+          | while read -r key url; do
+              name="${key#submodule.}"; name="${name%.url}"
+              path=$(git config -f .gitmodules --get "submodule.${name}.path")
+              auth=$(printf '%s\n' "$url" | sed -E "s#^(git@github\.com:|https://github\.com/)#https://x-access-token:${TOKEN}@github.com/#")
+              https=$(printf '%s\n' "$url" | sed -E 's#^git@github\.com:#https://github.com/#')
+              git -c "submodule.${name}.url=${auth}" submodule update --init --depth 1 "$path"
+              git config "submodule.${name}.url" "$https"
+            done
+
+      - uses: astral-sh/setup-uv@v6   # conventions/bin/ocots-lint relaie par uvx
+
+      - name: Corriger et ouvrir la PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TARGET: ${{ inputs.target }}
+          ISSUE: ${{ inputs.issue }}
+        run: |
+          git config user.name  "ocourses-agent"
+          git config user.email "agent@users.noreply.github.com"
+          bash _agents/scripts/nettoyer-pr.sh
