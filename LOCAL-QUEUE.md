@@ -165,7 +165,7 @@ GitHub — seul le git (clone/branche/commit/push) et la lecture de
    |---|---|
    | `migration` | PR ouverte **et** `bash <agents>/scripts/lib/rescan-migration.sh <repo> <branch> <target>` renvoie `CLEAN` |
    | `fix` | PR ouverte (`gh pr view <pr> --repo <repo> --json state` → `OPEN`) |
-   | `conventions` | l'issue `<number>` n'est plus `conventions-candidate` (fermée, ou promue `conventions-style` par ton propre travail à l'étape 4) |
+   | `conventions` | l'issue `<number>` n'est plus `conventions-candidate` (fermée, ou promue `conventions-style` par ton propre travail à l'étape 4) **et** `BASE=<base> bash <agents>/scripts/controle-tri.sh` réussit depuis le clone (le diff ne fait que poser des exemptions, comme le step « Contrôle du tri » d'`agent.yml`) |
    | `mecanique` | PR ouverte sur la branche `ocots-lint/nettoyer/<target>` (fermer alors l'issue, comme la file), ou issue déjà fermée par le script (rien à corriger) |
 
    Pour `migration`, un statut autre que `CLEAN` (ou une revérification

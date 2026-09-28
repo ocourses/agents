@@ -76,14 +76,23 @@ candidat, un agent tranche.
        -f target=<fichier> -f issue=<numéro du candidat>
 
 3. agent-review-conventions.yml → agent.yml (role: conventions-reviewer)
-   · relit le FICHIER RÉEL autour de chaque ligne signalée par verifier
+   · retrouve chaque trouvaille par son empreinte (bloc JSON de l'issue,
+     `ocots-lint verifier --format json`), relit le FICHIER RÉEL autour
    · juge : confirmée / faux positif / exception légitime (P2 tolère les
      séries d'exercices, P5 accepte des remarques groupées légitimes…)
-   · modifie l'issue candidate elle-même — jamais le contenu du cours :
-     - rien de confirmé → ferme avec le motif de chaque rejet
+   · consigne chaque rejet dans la source : `ocots-lint exempter` pose
+     `% ocots-lint: ignore RÈGLE — raison` — sa SEULE écriture ;
+     scripts/controle-tri.sh (`exempter --controler`) fait échouer le run
+     si le diff contient autre chose
+   · modifie l'issue candidate elle-même :
+     - rien de confirmé → ferme « not planned » avec le motif de chaque
+       rejet, corps intact (son bloc JSON empêche la réouverture tant que
+       la PR d'exemptions n'est pas fusionnée)
      - au moins un point confirmé → réécrit le corps (juste les points
-       retenus), swap le label conventions-candidate → conventions-style,
-       laisse ouverte
+       retenus, bloc JSON réduit à eux), swap le label
+       conventions-candidate → conventions-style, laisse ouverte
+   · la PR Draft du run porte les exemptions : la fusionner clôt les rejets
+     pour de bon
 
 4. queue-next.sh reprend la main
    · état de l'issue candidate changé (fermée ou promue) → succès
@@ -530,7 +539,7 @@ l'utilise à chaque tick, il ne le remplace pas.
 | `exercise-corrector` | rédige les corrigés d'un TD |
 | `course-author` | complète / rédige une section de poly |
 | `reviewer` | relit et produit un rapport, sans réécrire |
-| `conventions-reviewer` | trie un candidat `conventions-candidate` (sortie brute de `conventions/bin/verifier`) : confirme, rejette ou complète — jamais de réécriture |
+| `conventions-reviewer` | trie un candidat `conventions-candidate` (sortie brute d'`ocots-lint`) : confirme, rejette (exemption posée par `ocots-lint exempter`) ou complète — jamais de réécriture du contenu |
 | `conventions-fixer` | corrige les points **confirmés** d'une issue `conventions-style`, remède documenté par `ocots-conventions` — ne tranche pas un choix d'auteur (ex. C2) |
 
 ## Ajouter un rôle

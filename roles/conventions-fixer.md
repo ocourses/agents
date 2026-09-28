@@ -45,10 +45,18 @@ jugement de style personnel.
    pilote), une compilation du seul fragment concerné (macros non pertinentes
    bouchées localement, **jamais dans le fichier réel**) sert de vérification
    de substitution.
-1. `gh issue view <numéro>` — récupère le corps **déjà réécrit** par
-   `conventions-reviewer` : seulement les points confirmés, un par ligne, avec
-   règle et justification. C'est ta liste de travail, pas la sortie brute
-   d'origine (`verifier`), qui n'apparaît plus à ce stade.
+1. `gh issue view <numéro> --json body` — récupère le corps **déjà réécrit**
+   par `conventions-reviewer` : seulement les points confirmés, un par ligne,
+   avec règle et justification. C'est ta liste de travail, pas la sortie brute
+   d'origine (`verifier`), qui n'apparaît plus à ce stade. Le corps se termine
+   par un bloc `<!-- ocots-lint {...} -->` : l'`empreinte` de chaque point
+   confirmé outillé. **Retrouve la ligne actuelle par l'empreinte**, pas par
+   le numéro de l'issue (le fichier a pu bouger depuis le tri) :
+   `conventions/bin/ocots-lint verifier --format json <fichier>` liste les
+   trouvailles actuelles avec leurs empreintes et leurs lignes. Un point
+   confirmé non outillé (ajouté en lisant) n'a pas d'empreinte : repère-le
+   par le texte cité. Pas de bloc (ancienne issue, ou pas de relais
+   `conventions/bin/ocots-lint`) : pars des lignes citées.
 2. Plan dans le fichier de suivi : un point par ligne de l'issue, avec la
    règle citée et le remède que tu comptes appliquer (résumé en une phrase),
    lu dans `communes.md` ou le fichier du support.
@@ -65,7 +73,11 @@ jugement de style personnel.
      sur la zone concernée). Ne fabrique jamais un remède sur du texte
      disparu, et ne conclus pas à un échec pour ce point.
 4. Vérifie `git diff` à chaque étape : seul le texte lié au point traité doit
-   changer, rien d'autre.
+   changer, rien d'autre. À la fin, l'empreinte d'un point corrigé ne doit
+   plus apparaître dans `verifier --format json <fichier>` (pour une règle
+   `signal`, l'outil peut continuer à signaler une ligne correcte : dis-le au
+   bilan plutôt que de tordre le texte). **Ne pose jamais d'exemption**
+   (`ocots-lint exempter`) : c'est le rôle du tri, pas de la correction.
 5. **`latex-compile <fichier>` à la fin** :
    - Si l'étape 0 compilait déjà : le document doit encore compiler — un
      nouvel échec est de ton fait, à corriger avant le bilan.
