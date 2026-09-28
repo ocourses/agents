@@ -217,6 +217,28 @@ case "$kind" in
       echo "OK : candidat traité par l'agent (état: $state)"
     fi
     ;;
+  mecanique)
+    # Voie mécanique (sans modèle, scripts/nettoyer-pr.sh) : succès si une
+    # PR est ouverte sur la branche déterministe — on ferme alors l'issue,
+    # comme pour fix ; ou si le script a fermé l'issue lui-même (rien à
+    # corriger). Même calcul de branche que nettoyer-pr.sh et ocots-lint.
+    branche="ocots-lint/nettoyer/$(printf '%s' "$target" | sed 's#[^A-Za-z0-9._/-]#-#g')"
+    pr_url="$(gh pr list --repo "$repo" --head "$branche" --state open \
+      --json url --jq '.[0].url // empty' 2>/dev/null || true)"
+    state="$(gh issue view "$number" --repo "$repo" --json state --jq .state 2>/dev/null || echo OPEN)"
+    if [ "$rc" -eq 0 ] && [ -n "$pr_url" ]; then
+      success=1
+      gh issue comment "$number" --repo "$repo" \
+        --body "Run terminé → PR ouverte : $pr_url (reste en **Draft**, relecture humaine avant fusion)." >/dev/null
+      gh issue close "$number" --repo "$repo" --reason completed >/dev/null
+      bash "$SCRIPT_DIR/claim-issue.sh" release "$repo" "$number" >/dev/null
+      echo "OK : $pr_url"
+    elif [ "$rc" -eq 0 ] && [ "$state" = "CLOSED" ]; then
+      success=1
+      bash "$SCRIPT_DIR/claim-issue.sh" release "$repo" "$number" >/dev/null
+      echo "OK : rien à corriger, issue fermée par le script"
+    fi
+    ;;
 esac
 
 if [ "$success" -ne 1 ]; then

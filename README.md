@@ -263,6 +263,16 @@ trouvaille dans l'issue, un rejet qui n'est pas redemandé, et rien de touché s
 l'analyse échoue. Un cours qui épingle des conventions plus anciennes garde le
 chemin historique décrit ci-dessous.
 
+**Voie mécanique** : les trouvailles que `ocots-lint nettoyer` sait corriger
+(`~:`, guillemets si `csquotes` est chargé) ont leur propre issue,
+`[nettoyer] <fichier>` (label `conventions-mecanique`). La file
+l'envoie à `agent-nettoyer.yml` dans le cours, qui appelle le workflow
+réutilisable [`nettoyer.yml`](.github/workflows/nettoyer.yml) :
+[`scripts/nettoyer-pr.sh`](scripts/nettoyer-pr.sh) corrige le fichier et
+ouvre ou met à jour une PR Draft sur la branche déterministe
+`ocots-lint/nettoyer/<fichier>` — **aucun modèle, aucun budget Albert**. Le
+tri (`conventions-reviewer`) ne voit plus ces lignes.
+
 Chemin historique — enveloppe `conventions/bin/verifier` : regroupe ses trouvailles par fichier,
 une issue **candidate** par fichier (pas par ligne, label
 `conventions-candidate`). **Idempotent** — un candidat existant est mis à
@@ -363,14 +373,15 @@ directement par un événement `pull_request`.
 
 `queue.yml` + `scripts/queue-next.sh` : dépile la plus ancienne tâche
 éligible, **tous dépôts de `config/course-repos.txt` confondus**, et
-l'envoie au bon workflow — sans intervention humaine. Trois natures de
-tâches, trois workflows cibles :
+l'envoie au bon workflow — sans intervention humaine. Quatre natures de
+tâches, quatre workflows cibles :
 
 | Label source | Dispatché vers | Rôle | Ce que « succès » veut dire |
 |---|---|---|---|
 | `template-migration` | `agent-migrate-latex.yml` | `latex-template-migrator` | une PR `[agent] Migration <fichier>` est ouverte **et** la revérification (`scripts/lib/template-scan.sh` sur la branche de la PR) ne trouve plus aucun nom de `ocots-compat.sty` dans la chaîne `\input` du pilote |
 | `conventions-candidate` | `agent-review-conventions.yml` | `conventions-reviewer` | l'issue candidate n'est plus `conventions-candidate` (fermée ou promue `conventions-style`) |
 | `conventions-style` | `agent-fix-conventions.yml` | `conventions-fixer` | une PR `[agent] Correction conventions <fichier>` est ouverte |
+| `conventions-mecanique` | `agent-nettoyer.yml` | aucun (sans modèle, `scripts/nettoyer-pr.sh`) | une PR est ouverte sur `ocots-lint/nettoyer/<fichier>`, ou l'issue a été fermée faute de correction à faire |
 
 **Le checker `conventions` ne juge jamais** — il l'a dit lui-même
 (`ocots-conventions/README.md`, § « Ce que l'outil ne fait pas ») : c'est un
