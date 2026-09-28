@@ -10,3 +10,4 @@
 ocourses/automatique-enseignants
 ocourses/mesure-integration-enseignants
 ocourses/calcul-differentiel-edo-enseignants
+ocourses/ocots-demo
