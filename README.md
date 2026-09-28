@@ -254,7 +254,16 @@ séparément de ce détecteur).
 
 ### `conventions`
 
-Enveloppe `conventions/bin/verifier` : regroupe ses trouvailles par fichier,
+**Depuis `ocots-conventions` v2.2.0**, le détecteur délègue tout à
+`./conventions/bin/ocots-lint synchroniser`
+([`ocots-lint`](https://github.com/ocourses/ocots-lint#les-issues-du-cours--synchroniser)),
+en Python testé : mêmes titres, mêmes labels, même `.agents-ignore`, et en plus
+les empreintes et la voie (`mecanique`, `correction`, `tri`) de chaque
+trouvaille dans l'issue, un rejet qui n'est pas redemandé, et rien de touché si
+l'analyse échoue. Un cours qui épingle des conventions plus anciennes garde le
+chemin historique décrit ci-dessous.
+
+Chemin historique — enveloppe `conventions/bin/verifier` : regroupe ses trouvailles par fichier,
 une issue **candidate** par fichier (pas par ligne, label
 `conventions-candidate`). **Idempotent** — un candidat existant est mis à
 jour (pas dupliqué), et se ferme tout seul (avec un commentaire) si le
