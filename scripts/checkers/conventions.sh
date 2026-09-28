@@ -76,7 +76,9 @@ fi
 # fonction, donc pas concerné, mais la construction reste identique.
 : > "$tmp/ignore-patterns.txt"
 if [ -f "$IGNORE_FILE" ]; then
-  grep -vE '^[[:space:]]*(#|$)' "$IGNORE_FILE" \
+  # `|| true` : un fichier sans motif (commentaires seuls) fait sortir grep en
+  # 1, ce qui, sous pipefail, arrêtait le détecteur sans message.
+  { grep -vE '^[[:space:]]*(#|$)' "$IGNORE_FILE" || true; } \
     | sed -E 's/[.[\*^$()+?{|]/\\&/g; s/^/^/' \
     > "$tmp/ignore-patterns.txt"
 fi
