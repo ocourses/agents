@@ -156,6 +156,8 @@ jobs:
               git config "submodule.${name}.url" "$https"
             done
 
+      - uses: astral-sh/setup-uv@v6   # conventions/bin/verifier relaie vers ocots-lint (uvx)
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"

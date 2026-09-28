@@ -56,10 +56,18 @@ echo "Dépôt : $REPO — conventions : $pin"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 
 # `verifier` sort 1 dès qu'il y a une infraction : ce n'est pas une erreur ici.
+# Toute autre sortie non nulle (2 : argument inconnu, uv absent pour le relais
+# vers ocots-lint…) en est une : la sortie vide serait lue comme « plus aucune
+# trouvaille » et refermerait à tort les candidates ouvertes. On s'arrête.
 set +e
 "$VERIFIER" > "$tmp/out.txt" 2> "$tmp/err.txt"
+rc=$?
 set -e
 echo "::group::sortie de verifier"; cat "$tmp/out.txt"; echo "---"; cat "$tmp/err.txt"; echo "::endgroup::"
+if [ "$rc" -gt 1 ]; then
+  echo "::error::verifier a échoué (code $rc) — aucune issue modifiée."
+  exit 1
+fi
 
 # --- exclusions propres à ce dépôt (IGNORE_FILE) ---------------------------
 # Même piège évité qu'en template-migration.sh : ne pas compter sur le
