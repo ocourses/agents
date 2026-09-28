@@ -204,6 +204,16 @@ jobs:
           RUN_URL: "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
         run: bash _agents/scripts/run-opencode.sh
 
+      # Le tri ne touche au cours que pour poser des exemptions
+      # (`ocots-lint exempter`) : tout autre changement fait échouer le run,
+      # et la file marque l'issue agent:failed. Le travail est quand même
+      # poussé (step suivant) pour rester visible dans la PR Draft.
+      - name: Contrôle du tri (exemptions seulement)
+        if: inputs.role == 'conventions-reviewer'
+        env:
+          BASE: ${{ steps.main_before.outputs.base }}
+        run: bash _agents/scripts/controle-tri.sh
+
       - name: Push du travail
         if: always() && steps.scaffold.outputs.branch != ''
         env:

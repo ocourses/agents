@@ -155,13 +155,13 @@ case "$kind" in
     workflow="agent-review-conventions.yml"
     role="conventions-reviewer"
     task_title="Triage conventions ${target} (#${number})"
-    task="Trie le candidat conventions ouvert dans l'issue #${number} (fichier ${target}) en suivant le rôle conventions-reviewer : relis le fichier autour de chaque ligne signalée, décide confirmée / faux positif / exception légitime, puis modifie CETTE issue (jamais une nouvelle) — ferme-la avec le motif de chaque rejet si rien n'est confirmé, ou réécris son corps et remplace le label conventions-candidate par conventions-style si au moins un point est confirmé. Ne modifie aucun fichier du dépôt."
+    task="Trie le candidat conventions ouvert dans l'issue #${number} (fichier ${target}) en suivant le rôle conventions-reviewer : retrouve chaque trouvaille par son empreinte (bloc JSON de l'issue), relis le fichier autour, décide confirmée / faux positif / exception légitime, consigne chaque rejet par ocots-lint exempter, puis modifie CETTE issue (jamais une nouvelle) — ferme-la avec le motif de chaque rejet si rien n'est confirmé, ou réécris son corps (points confirmés et leur bloc JSON) et remplace le label conventions-candidate par conventions-style si au moins un point est confirmé. Ne modifie aucun fichier du dépôt, sauf les exemptions posées par ocots-lint exempter."
     ;;
   fix)
     workflow="agent-fix-conventions.yml"
     role="conventions-fixer"
     task_title="Correction conventions ${target}"
-    task="Corrige les points CONFIRMÉS de l'issue conventions-style #${number} (fichier ${target}) en suivant le rôle conventions-fixer : relis l'issue (verdicts déjà rendus par conventions-reviewer, pas la sortie brute du détecteur), applique le remède documenté par ocots-conventions pour chaque règle citée, uniquement sur les points confirmés — rien d'autre dans le fichier. Un remède qui demande un choix d'auteur (ex. C2 entre deux formes réellement équivalentes) : ne tranche pas, laisse la ligne en l'état et signale-le dans le bilan."
+    task="Corrige les points CONFIRMÉS de l'issue conventions-style #${number} (fichier ${target}) en suivant le rôle conventions-fixer : relis l'issue (verdicts déjà rendus par conventions-reviewer, pas la sortie brute du détecteur ; lignes retrouvées par l'empreinte de son bloc JSON), applique le remède documenté par ocots-conventions pour chaque règle citée, uniquement sur les points confirmés — rien d'autre dans le fichier. Un remède qui demande un choix d'auteur (ex. C2 entre deux formes réellement équivalentes) : ne tranche pas, laisse la ligne en l'état et signale-le dans le bilan."
     ;;
   mecanique)
     # Voie mécanique d'ocots-lint : aucun modèle. Le workflow du cours
