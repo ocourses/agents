@@ -241,6 +241,23 @@ rien d'autre à toucher dans `check.yml`.
 |---|---|---|---|
 | `template-migration` | document `.tex` pas (ou pas complètement) migré vers le template `ocots` | `template-migration` | extrait `template/tex/ocots-compat.sty` à chaque run |
 | `conventions` | **candidats bruts** (pas un verdict) aux règles mécaniques de `ocots-conventions` (P2, P3, P5, C4 au 2026-09-11) | `conventions-candidate` | enveloppe `conventions/bin/verifier` |
+| `versions` | sous-module (template, conventions…) en retard sur la dernière release `vX.Y.Z` de son dépôt — une issue `[versions] <chemin>` avec les versions à franchir (majeures signalées) et leurs sections du CHANGELOG ; fermée seule une fois à jour. **Pas lue par la file** : pour l'auteur | `versions` | tags et CHANGELOG du dépôt du sous-module (API GitHub) |
+
+### `versions`
+
+Dans le `check.yml` du cours :
+
+```yaml
+  versions:
+    uses: ocourses/agents/.github/workflows/check.yml@main
+    with:
+      checker: versions
+    secrets:
+      AGENTS_READ_TOKEN: ${{ secrets.AGENTS_READ_TOKEN }}
+```
+
+À la main, sans rien toucher : `REPO=ocourses/<cours> GH_TOKEN=$(gh auth
+token) DRY_RUN=1 bash scripts/checkers/versions.sh` depuis le clone du cours.
 
 ### `template-migration`
 
