@@ -45,6 +45,20 @@ VERIFIER="${CONVENTIONS_DIR}/bin/verifier"
 : "${REPO:?REPO requis}"
 : "${GH_TOKEN:?GH_TOKEN requis}"
 
+# --- Nouveau chemin : ocots-lint synchroniser (ocots-conventions >= v2.2.0) --
+# Le relais générique conventions/bin/ocots-lint épingle la version
+# d'ocots-lint. `synchroniser` fait tout ce qui suit (mêmes titres, mêmes
+# labels, même .agents-ignore), en Python testé, avec en plus : empreintes et
+# voies dans chaque issue, rejet non redemandé, rien de touché si l'analyse
+# échoue. Un cours qui épingle des conventions plus anciennes garde le chemin
+# historique ci-dessous, inchangé.
+RELAIS="${CONVENTIONS_DIR}/bin/ocots-lint"
+if [ -x "$RELAIS" ]; then
+  pin="$(git -C "$CONVENTIONS_DIR" describe --tags --always 2>/dev/null || echo '?')"
+  echo "Dépôt : $REPO — conventions : $pin — ocots-lint synchroniser"
+  exec "$RELAIS" synchroniser --depot "$REPO" --ignore "$IGNORE_FILE"
+fi
+
 if [ ! -x "$VERIFIER" ]; then
   echo "::warning::pas de sous-module conventions ($VERIFIER introuvable) — rien à vérifier."
   exit 0
