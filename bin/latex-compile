@@ -8,9 +8,21 @@
 # La sortie (PDF, .aux, build/…) va dans un dossier JETABLE hors du dépôt : le
 # but est de VÉRIFIER, pas de produire un livrable. Ne commite jamais de PDF.
 # Affiche les erreurs filtrées du log ; code de retour != 0 si un document échoue.
+#
+# LATEX_RUNTIME=local : latexmk du PATH au lieu du conteneur, pour un runner
+# sans Docker (Occidata, posé par agent.yml). Défaut : docker.
 set -u
 
 IMAGE="${TEXLIVE_IMAGE:-ghcr.io/xu-cheng/texlive-full:latest}"
+# texrun <commande...> : dans le dossier du document ($dir) ; $o : son dossier
+# de sortie tel que la commande le voit.
+if [ "${LATEX_RUNTIME:-docker}" = local ]; then
+  texrun() { (cd "$root/$dir" && "$@"); }
+  outview() { echo "$out/$dir"; }
+else
+  texrun() { docker run --rm -v "$root":/w -v "$out":/out -w "/w/$dir" "$IMAGE" "$@"; }
+  outview() { echo "/out/$dir"; }
+fi
 root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 [ "$#" -gt 0 ] || { echo "usage: latex-compile <doc.tex> [...]" >&2; exit 2; }
 
@@ -27,10 +39,10 @@ for f in "$@"; do
 
   echo "── latex-compile: $rel"
   # -output-directory hors du dépôt : le tree reste propre. TEXINPUTS des
-  # .latexmkrc reste relatif au -w (dossier du doc), les entrées sont trouvées.
-  if docker run --rm -v "$root":/w -v "$out":/out -w "/w/$dir" "$IMAGE" \
-       latexmk -pdf -interaction=nonstopmode -halt-on-error -file-line-error \
-               -output-directory="/out/$dir" -auxdir="/out/$dir" "$base" \
+  # .latexmkrc reste relatif au dossier du doc, les entrées sont trouvées.
+  o="$(outview)"
+  if texrun latexmk -pdf -interaction=nonstopmode -halt-on-error -file-line-error \
+               -output-directory="$o" -auxdir="$o" "$base" \
        > "$out/$stem.stdout" 2>&1
   then
     echo "   OK ($stem.pdf produit hors du dépôt — ne pas committer)"

@@ -572,6 +572,29 @@ pas de scission plan/travail. Le workflow le trouve par son nom.
 - Les identifiants de modèles Albert peuvent devenir périmés — vérifier
   `GET /v1/models`.
 
+### Runner : bascule manuelle vers Occidata
+
+`agent.yml`, `check.yml`, `latex-pr.yml` et `nettoyer.yml` tournent sur
+`ubuntu-latest`. Pour un dépôt privé, cela consomme les minutes GitHub de
+l'organisation. Quand le quota est épuisé, on bascule à la main sur le runner
+`occidata-cpu` (cluster Occidata de l'IRIT, labels `occidata,cpu`, dépôts privés
+seulement), puis on revient :
+
+```bash
+gh variable set OCOURSES_RUNNER --org ocourses --visibility private --body '["self-hosted","occidata","cpu"]'
+gh variable delete OCOURSES_RUNNER --org ocourses
+```
+
+Une variable du même nom au niveau d'un dépôt ne bascule que ce dépôt. Pour
+`nettoyer.yml`, l'entrée `runs-on` de l'appelant, si elle est renseignée, garde
+la priorité.
+
+Occidata n'a pas Docker. Sur un runner auto-hébergé (`runner.environment`),
+`latex-pr.yml` et `bin/latex-compile` (`LATEX_RUNTIME=local`, posé par
+`agent.yml`) utilisent le TeX Live du cluster (2025) au lieu de l'image
+`texlive-full`. Sur GitHub, rien ne change. Le runner lui-même est documenté dans
+control-toolbox/occidata, `docs/gha-runner-config.md` § 9.
+
 ### Échéances des secrets
 
 Tous les jetons de ce montage expirent, à des dates échelonnées — quatre rien
