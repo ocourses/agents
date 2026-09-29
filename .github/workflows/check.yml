@@ -12,7 +12,9 @@ name: Check — détecteurs de non-conformité
 # Le dépôt appelant fournit un job par détecteur qu'il veut activer (voir
 # .agents/README.md pour l'exemple complet — un cron, plusieurs jobs) :
 #
-#   permissions: { contents: read, issues: write }
+#   permissions: { contents: read, issues: write, pull-requests: read }
+#   (pull-requests: read : le détecteur conventions — ocots-lint synchroniser —
+#   lit les PR ouvertes ; indispensable sur un dépôt privé)
 #   jobs:
 #     template-migration:
 #       uses: ocourses/agents/.github/workflows/check.yml@main

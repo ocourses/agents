@@ -354,7 +354,7 @@ name: Check — conformité (template + conventions)
 on:
   schedule: [{ cron: "0 6 * * 1" }]
   workflow_dispatch: {}
-permissions: { contents: read, issues: write }
+permissions: { contents: read, issues: write, pull-requests: read }
 jobs:
   template-migration:
     uses: ocourses/agents/.github/workflows/check.yml@main
