@@ -595,6 +595,23 @@ ocourses/<dépôt> --body '["self-hosted","occidata","cpu"]'`. Pour
 `nettoyer.yml`, l'entrée `runs-on` de l'appelant, si elle est renseignée, garde
 la priorité.
 
+**Règle pour tout nouveau workflow.** La bascule ne couvre que les jobs qui lisent
+la variable. Tout job qui tourne pour un dépôt privé écrit donc :
+
+```yaml
+runs-on: ${{ fromJSON(vars.OCOURSES_RUNNER || '"ubuntu-latest"') }}
+```
+
+et jamais `ubuntu-latest` en dur. Ça vaut aussi pour un petit job de préparation
+(comme `liste` dans `agent-migrate-batch.yml`) : s'il ne démarre pas, tout le
+workflow est bloqué. Ça vaut enfin pour un workflow réutilisable d'un autre dépôt
+(comme `verifier-pr.yml` d'`ocots-lint`, depuis v0.5.1). `vars` y désigne les
+variables du dépôt appelant. Pour vérifier qu'aucun job n'y échappe :
+
+```bash
+gh api repos/ocourses/<dépôt>/contents/.github/workflows --jq '.[].name'   # puis chercher `runs-on: ubuntu-latest`
+```
+
 Occidata n'a pas Docker. Sur un runner auto-hébergé (`runner.environment`),
 `latex-pr.yml` et `bin/latex-compile` (`LATEX_RUNTIME=local`, posé par
 `agent.yml`) utilisent le TeX Live du cluster (2025) au lieu de l'image
