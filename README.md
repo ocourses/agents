@@ -581,11 +581,17 @@ l'organisation. Quand le quota est épuisé, on bascule à la main sur le runner
 seulement), puis on revient :
 
 ```bash
-gh variable set OCOURSES_RUNNER --org ocourses --visibility private --body '["self-hosted","occidata","cpu"]'
-gh variable delete OCOURSES_RUNNER --org ocourses
+bin/runner-switch occidata   # tous les dépôts privés sur Occidata
+bin/runner-switch github     # retour à ubuntu-latest
+bin/runner-switch status     # état actuel, dépôt par dépôt
 ```
 
-Une variable du même nom au niveau d'un dépôt ne bascule que ce dépôt. Pour
+Le script pose (ou retire) la variable `OCOURSES_RUNNER` sur **chaque dépôt
+privé**. Une variable d'organisation ne marcherait pas : avec GitHub Free, les
+variables d'organisation ne sont pas transmises aux dépôts privés. Un dépôt
+privé créé après une bascule n'est pas couvert : relancer `runner-switch
+occidata`. Pour ne basculer qu'un dépôt, `gh variable set OCOURSES_RUNNER -R
+ocourses/<dépôt> --body '["self-hosted","occidata","cpu"]'`. Pour
 `nettoyer.yml`, l'entrée `runs-on` de l'appelant, si elle est renseignée, garde
 la priorité.
 

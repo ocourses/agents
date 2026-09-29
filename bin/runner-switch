@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Bascule le runner des workflows réutilisables (agent, check, latex-pr,
+# nettoyer) pour tous les dépôts PRIVÉS de l'organisation.
+#
+#   runner-switch occidata   # OCOURSES_RUNNER sur chaque dépôt privé
+#   runner-switch github     # retire la variable : retour à ubuntu-latest
+#   runner-switch status     # runner actuel de chaque dépôt privé (défaut)
+#
+# Une variable par dépôt, et non une variable d'organisation : avec GitHub
+# Free, les variables d'organisation ne sont pas transmises aux dépôts
+# privés. Un dépôt privé créé après une bascule n'est pas couvert :
+# relancer `runner-switch occidata`.
+set -euo pipefail
+
+ORG="${ORG:-ocourses}"
+VAR=OCOURSES_RUNNER
+VALUE='["self-hosted","occidata","cpu"]'
+
+repos="$(gh repo list "$ORG" --visibility private --no-archived -L 1000 --json name --jq '.[].name')"
+
+case "${1:-status}" in
+  occidata)
+    for r in $repos; do gh variable set "$VAR" -R "$ORG/$r" --body "$VALUE"; echo "$r: occidata"; done ;;
+  github)
+    for r in $repos; do gh variable delete "$VAR" -R "$ORG/$r" 2>/dev/null || true; echo "$r: github"; done ;;
+  status)
+    for r in $repos; do echo "$r: $(gh variable get "$VAR" -R "$ORG/$r" 2>/dev/null || echo '(github)')"; done ;;
+  *)
+    echo "usage: runner-switch occidata|github|status" >&2; exit 2 ;;
+esac
