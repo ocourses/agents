@@ -19,10 +19,13 @@ on:
         required: true
         type: string
       runs-on:
-        description: "Runner, en JSON : '\"ubuntu-latest\"' ou '[\"self-hosted\"]'"
+        description: >-
+          Runner, en JSON : '"ubuntu-latest"' ou '["self-hosted"]'. Vide
+          (défaut) : la variable OCOURSES_RUNNER si elle est définie (bascule
+          manuelle, voir latex-pr.yml), sinon ubuntu-latest.
         required: false
         type: string
-        default: '"ubuntu-latest"'
+        default: ""
       agents_ref:
         required: false
         type: string
@@ -34,7 +37,7 @@ on:
 jobs:
   nettoyer:
     name: "Nettoyer · ${{ inputs.target }}"
-    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    runs-on: ${{ fromJSON(inputs.runs-on || vars.OCOURSES_RUNNER || '"ubuntu-latest"') }}
     steps:
       - name: Checkout du dépôt appelant
         uses: actions/checkout@v4

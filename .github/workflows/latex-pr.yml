@@ -14,6 +14,13 @@ name: Compilation LaTeX (PR)
 # ubuntu-latest, seul TeX Live est conteneurisé. Aucun script partagé
 # d'`ocourses/agents` référencé ici — pas besoin de checkout `_agents`.
 #
+# Runner : ubuntu-latest, sauf si la variable OCOURSES_RUNNER (organisation
+# ou dépôt) en désigne un autre — bascule manuelle vers le runner Occidata
+# quand le quota de minutes est épuisé (control-toolbox/occidata,
+# docs/gha-runner-config.md § 9). Occidata n'a pas Docker : sur un runner
+# auto-hébergé, latexmk est celui du runner (TeX Live du cluster). Sur
+# GitHub, rien ne change.
+#
 # Le dépôt appelant fournit :
 #
 #   on:
@@ -43,7 +50,7 @@ env:
 
 jobs:
   compile:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.OCOURSES_RUNNER || '"ubuntu-latest"') }}
     steps:
       - name: Checkout de la PR
         uses: actions/checkout@v4
@@ -109,12 +116,21 @@ jobs:
           sed 's/^/  - /' docs.txt || true
           echo "count=$(grep -c . docs.txt || true)" >> "$GITHUB_OUTPUT"
 
-      - name: Compilation (TeX Live conteneurisé)
+      - name: Compilation (TeX Live)
         if: steps.docs.outputs.count != '0'
         id: build
+        env:
+          RUNNER_ENV: ${{ runner.environment }}
         run: |
           set -u
-          docker pull -q "$TEXLIVE_IMAGE"
+          # texrun <dossier> <commande...> : TeX Live conteneurisé sur GitHub,
+          # celui du runner sur un runner auto-hébergé (pas de Docker).
+          if [ "$RUNNER_ENV" = github-hosted ]; then
+            docker pull -q "$TEXLIVE_IMAGE"
+            texrun() { docker run --rm -v "$PWD":/w -w "/w/$1" "$TEXLIVE_IMAGE" "${@:2}"; }
+          else
+            texrun() { (cd "$1" && "${@:2}"); }
+          fi
           rc=0
           : > report.md
           mkdir -p _artifacts
@@ -126,7 +142,7 @@ jobs:
             [ -n "$f" ] || continue
             dir=$(dirname "$f"); bse=$(basename "$f")
             echo "::group::latexmk $f"
-            if docker run --rm -v "$PWD":/w -w "/w/$dir" "$TEXLIVE_IMAGE" \
+            if texrun "$dir" \
                  latexmk -pdf -interaction=nonstopmode -halt-on-error -file-line-error "$bse"; then
               echo "- ✅ \`$f\`" >> report.md
             else

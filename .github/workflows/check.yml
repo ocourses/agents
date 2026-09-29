@@ -47,7 +47,8 @@ on:
 jobs:
   check:
     name: "Check · ${{ inputs.checker }}"
-    runs-on: ubuntu-latest
+    # ubuntu-latest, sauf bascule manuelle via OCOURSES_RUNNER (voir latex-pr.yml).
+    runs-on: ${{ fromJSON(vars.OCOURSES_RUNNER || '"ubuntu-latest"') }}
     steps:
       - name: Checkout du dépôt appelant
         uses: actions/checkout@v4

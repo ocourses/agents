@@ -93,7 +93,8 @@ concurrency:
 jobs:
   agent:
     name: "Agent · ${{ inputs.role }}"
-    runs-on: ubuntu-latest
+    # ubuntu-latest, sauf bascule manuelle via OCOURSES_RUNNER (voir latex-pr.yml).
+    runs-on: ${{ fromJSON(vars.OCOURSES_RUNNER || '"ubuntu-latest"') }}
     steps:
       # Vigie main (avant) — l'agent travaille avec un accès shell complet et
       # un remote déjà authentifié en écriture. Rien ne l'empêche
@@ -162,12 +163,20 @@ jobs:
         with:
           node-version: "22"
 
+      # Sur un runner auto-hébergé (Occidata, sans Docker), latex-compile prend
+      # le TeX Live du runner (LATEX_RUNTIME=local) ; sur GitHub, rien ne change.
       - name: Outil latex-compile (PATH + image TeX Live préchargée)
+        env:
+          RUNNER_ENV: ${{ runner.environment }}
         run: |
           set -eu
           chmod +x _agents/bin/* || true
           echo "${GITHUB_WORKSPACE}/_agents/bin" >> "$GITHUB_PATH"
-          docker pull -q ghcr.io/xu-cheng/texlive-full:latest
+          if [ "$RUNNER_ENV" = github-hosted ]; then
+            docker pull -q ghcr.io/xu-cheng/texlive-full:latest
+          else
+            echo "LATEX_RUNTIME=local" >> "$GITHUB_ENV"
+          fi
 
       - name: Chantier (issue, branche, suivi, PR Draft)
         id: scaffold
