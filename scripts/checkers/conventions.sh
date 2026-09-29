@@ -1,23 +1,28 @@
 #!/usr/bin/env bash
-# Détecteur — enveloppe `conventions/bin/verifier` (ocots-conventions) et
-# ouvre une issue **candidate** par fichier en infraction brute. Déterministe,
-# aucun appel modèle, mais volontairement PAS un verdict : `verifier` lui-même
-# le dit (ocots-conventions/README.md, § « Ce que l'outil ne fait pas ») — il
-# rate des choses, il signale du correct, zéro trouvaille ne veut pas dire
-# règle respectée. Une trouvaille encore moins.
+# Détecteur — ouvre une issue **candidate** par fichier en infraction brute.
+# Déterministe, aucun appel modèle, mais volontairement PAS un verdict :
+# l'outil rate des choses et signale du correct (README d'ocots-lint). Le tri
+# revient à un agent (rôle conventions-reviewer, via
+# agent-review-conventions.yml, orchestré par queue.yml).
 #
-# Ce script ne fait donc QUE lister des candidats (label
-# conventions-candidate) — il n'affirme rien et ne les qualifie pas de vraie
-# infraction. Le tri revient à un agent (rôle conventions-reviewer, via
-# agent-review-conventions.yml, orchestré par la file d'attente globale
-# queue.yml) : il relit le fichier, exerce le jugement que le script n'a pas,
-# et promeut ou ferme chaque candidat. Ce script ne modifie donc jamais une
-# issue déjà promue par l'agent (label conventions-style) : voir plus bas.
+# Deux chemins, selon les conventions qu'épingle le cours :
 #
-# Idempotent : une issue candidate existante pour un fichier est mise à jour
-# (pas dupliquée) ; un fichier qui n'a plus d'infraction brute voit sa
-# candidate fermée automatiquement (mais pas une issue déjà promue : elle
-# reste au jugement de l'agent / d'un humain).
+# - conventions >= v2.2.0 (relais conventions/bin/ocots-lint présent) :
+#   `ocots-lint synchroniser` fait tout — une issue [conventions] par fichier
+#   (tri), une issue [nettoyer] pour la voie mécanique, empreintes et voies
+#   dans chaque issue, rejets non redemandés, rien de touché si l'analyse
+#   échoue. Titres, labels et comportement : README d'ocots-lint.
+#   Le script s'arrête là (exec).
+#
+# - conventions plus anciennes : chemin historique en bash, plus bas, qui
+#   enveloppe conventions/bin/verifier. Au 2026-09-29, encore utilisé par
+#   automatique-enseignants et calcul-differentiel-edo-enseignants (pin
+#   antérieur à v2.0.0) ; à retirer quand tous les cours de
+#   config/course-repos.txt épinglent au moins v2.2.0.
+#
+# Chemin historique : idempotent ; une issue candidate existante est mise à
+# jour, pas dupliquée ; la candidate d'un fichier sans infraction brute est
+# fermée ; une issue déjà promue (conventions-style) n'est jamais touchée.
 #
 # Entrées (variables d'environnement) :
 #   REPO       owner/name du dépôt scanné (défaut: $GITHUB_REPOSITORY)
