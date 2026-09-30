@@ -7,6 +7,11 @@ name: Compilation LaTeX (PR)
 # généricité que check.yml / agent.yml, mais copié-collé au lieu d'être
 # partagé) — voir ocourses/agents#2.
 #
+# Une référence non résolue (`??` dans le PDF) ou un label multiplement
+# défini fait échouer la PR, même si la compilation passe : lus dans le
+# `.log` final (ocots-conventions C5 : « Un `??` dans le PDF est un bug » ;
+# ocots-lint, décision 0006). Les clés sont listées dans le commentaire.
+#
 # Ne tourne que sur les PR **non-Draft** (condition posée dans le dispatcher
 # du dépôt appelant, pas ici : `workflow_call` ne peut pas être déclenché
 # directement par `pull_request`). latexmk tourne dans le conteneur
@@ -125,12 +130,36 @@ jobs:
           set -u
           # texrun <dossier> <commande...> : TeX Live conteneurisé sur GitHub,
           # celui du runner sur un runner auto-hébergé (pas de Docker).
+          # max_print_line : le .log ne coupe pas les lignes à 79 colonnes,
+          # une clé longue y reste lisible d'un seul tenant.
+          export max_print_line=10000
           if [ "$RUNNER_ENV" = github-hosted ]; then
             docker pull -q "$TEXLIVE_IMAGE"
-            texrun() { docker run --rm -v "$PWD":/w -w "/w/$1" "$TEXLIVE_IMAGE" "${@:2}"; }
+            texrun() { docker run --rm -e max_print_line -v "$PWD":/w -w "/w/$1" "$TEXLIVE_IMAGE" "${@:2}"; }
           else
             texrun() { (cd "$1" && "${@:2}"); }
           fi
+          # aux_dir des .latexmkrc du dépôt = build/ : chercher le log là aussi
+          trouver_log() {
+            for c in "$1/build/${2%.tex}.log" "$1/${2%.tex}.log"; do
+              [ -f "$c" ] && { echo "$c"; return; }
+            done
+          }
+          # renvois <log> : « non résolue<TAB>clé » et « dupliqué<TAB>clé »
+          # du .log final (les doublons `clé@cref` de cleveref sont écartés).
+          renvois() {
+            python3 - "$1" <<'PY'
+          import re, sys
+          motifs = (
+              ("non résolue", r"(?:LaTeX|Hyper) (?:Warning: )?[Rr]eference `([^']+)' on page \S+ undefined"),
+              ("dupliqué", r"LaTeX Warning: Label `([^']+)' multiply defined"),
+          )
+          texte = open(sys.argv[1], encoding="latin-1").read()
+          for genre, motif in motifs:
+              for cle in sorted({c for c in re.findall(motif, texte) if not c.endswith("@cref")}):
+                  print(f"{genre}\t{cle}")
+          PY
+          }
           rc=0
           : > report.md
           mkdir -p _artifacts
@@ -144,15 +173,29 @@ jobs:
             echo "::group::latexmk $f"
             if texrun "$dir" \
                  latexmk -pdf -interaction=nonstopmode -halt-on-error -file-line-error "$bse"; then
-              echo "- ✅ \`$f\`" >> report.md
+              log=$(trouver_log "$dir" "$bse")
+              pb=""
+              [ -n "$log" ] && pb=$(renvois "$log")
+              if [ -z "$pb" ]; then
+                echo "- ✅ \`$f\`" >> report.md
+              else
+                rc=1
+                nr=$(grep -c '^non résolue' <<< "$pb" || true)
+                nd=$(grep -c '^dupliqué' <<< "$pb" || true)
+                {
+                  echo "- ❌ \`$f\` — compilé, mais $nr référence(s) non résolue(s) (\`??\`), $nd label(s) multiplement défini(s)"
+                  echo "  <details><summary>Clés — <code>$f</code></summary>"
+                  echo
+                  printf '%s\n' "$pb" | awk -F'\t' '{ printf "  - %s : `%s`\n", $1, $2 }'
+                  echo
+                  echo "  </details>"
+                } >> report.md
+                cp "$log" "_artifacts/$(echo "${f%.tex}.log" | tr / -)"
+              fi
             else
               rc=1
               echo "- ❌ \`$f\`" >> report.md
-              # aux_dir des .latexmkrc du dépôt = build/ : chercher le log là aussi
-              log=""
-              for c in "$dir/build/${bse%.tex}.log" "$dir/${bse%.tex}.log"; do
-                [ -f "$c" ] && { log="$c"; break; }
-              done
+              log=$(trouver_log "$dir" "$bse")
               if [ -n "$log" ]; then
                 errs=$(grep -E ':[0-9]+:|^!|^l\.[0-9]+|Undefined control|Runaway|Missing|Not in outer|Emergency stop|.*Error' "$log" | head -60 || true)
                 {
