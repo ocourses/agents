@@ -63,8 +63,8 @@ Même colonne vertébrale, mais **le script ne décide jamais** — il ouvre un
 candidat, un agent tranche.
 
 ```
-1. check.yml → checkers/conventions.sh — gratuit, enveloppe
-   conventions/bin/verifier
+1. check.yml → checkers/conventions.sh — gratuit, délègue à
+   ocots-lint synchroniser (conventions/bin/ocots-lint)
    → ouvre/actualise un candidat "[conventions] <fichier>",
      label conventions-candidate, corps marqué "⚠️ candidat brut, pas relu"
    · plus aucune trouvaille brute au run suivant → ferme le candidat seul
@@ -240,7 +240,7 @@ rien d'autre à toucher dans `check.yml`.
 | Checker | Détecte | Label | Source |
 |---|---|---|---|
 | `template-migration` | document `.tex` pas (ou pas complètement) migré vers le template `ocots` | `template-migration` | extrait `template/tex/ocots-compat.sty` à chaque run |
-| `conventions` | **candidats bruts** (pas un verdict) aux règles mécaniques de `ocots-conventions` (P2, P3, P5, C4 au 2026-09-11) | `conventions-candidate` | enveloppe `conventions/bin/verifier` |
+| `conventions` | **candidats bruts** (pas un verdict) aux règles mécaniques de `ocots-conventions` (P2, P3, P5, C4 au 2026-09-11) | `conventions-candidate` | `ocots-lint synchroniser`, par `conventions/bin/ocots-lint` |
 | `versions` | sous-module (template, conventions…) en retard sur la dernière release `vX.Y.Z` de son dépôt — une issue `[versions] <chemin>` avec les versions à franchir (majeures signalées) et leurs sections du CHANGELOG ; fermée seule une fois à jour. **Pas lue par la file** : pour l'auteur | `versions` | tags et CHANGELOG du dépôt du sous-module (API GitHub) |
 
 ### `versions`
@@ -280,14 +280,17 @@ séparément de ce détecteur).
 
 ### `conventions`
 
-**Depuis `ocots-conventions` v2.2.0**, le détecteur délègue tout à
-`./conventions/bin/ocots-lint synchroniser`
+Le détecteur délègue tout à `./conventions/bin/ocots-lint synchroniser`
 ([`ocots-lint`](https://github.com/ocourses/ocots-lint#les-issues-du-cours--synchroniser)),
-en Python testé : mêmes titres, mêmes labels, même `.agents-ignore`, et en plus
-les empreintes et la voie (`mecanique`, `correction`, `tri`) de chaque
-trouvaille dans l'issue, un rejet qui n'est pas redemandé, et rien de touché si
-l'analyse échoue. Un cours qui épingle des conventions plus anciennes garde le
-chemin historique décrit ci-dessous.
+en Python testé : une issue **candidate** par fichier (pas par ligne, label
+`conventions-candidate`), `.agents-ignore` respecté, les empreintes et la voie
+(`mecanique`, `correction`, `tri`) de chaque trouvaille dans l'issue, un rejet
+qui n'est pas redemandé, une candidate fermée quand son fichier n'a plus de
+trouvaille, et rien de touché si l'analyse échoue. Il demande
+`ocots-conventions` **v2.2.0 ou plus** (le relais `bin/ocots-lint`) : un cours
+plus ancien fait échouer le job, avec la consigne de monter ses conventions.
+L'ancien chemin en bash, qui enveloppait `conventions/bin/verifier`, est
+retiré depuis que tous les cours sont montés (2026-10-01).
 
 **Voie mécanique** : les trouvailles que `ocots-lint nettoyer` sait corriger
 (`~:`, guillemets si `csquotes` est chargé) ont leur propre issue,
@@ -299,13 +302,7 @@ ouvre ou met à jour une PR Draft sur la branche déterministe
 `ocots-lint/nettoyer/<fichier>` — **aucun modèle, aucun budget Albert**. Le
 tri (`conventions-reviewer`) ne voit plus ces lignes.
 
-Chemin historique — enveloppe `conventions/bin/verifier` : regroupe ses trouvailles par fichier,
-une issue **candidate** par fichier (pas par ligne, label
-`conventions-candidate`). **Idempotent** — un candidat existant est mis à
-jour (pas dupliqué), et se ferme tout seul (avec un commentaire) si le
-fichier n'a plus de trouvaille brute au run suivant.
-
-**Ce script n'affirme jamais qu'il y a une vraie infraction.** `verifier`
+**Ce détecteur n'affirme jamais qu'il y a une vraie infraction.** L'outil
 le dit lui-même (`ocots-conventions/README.md`, § « Ce que l'outil ne fait
 pas ») : il rate des choses, il signale parfois du correct, zéro trouvaille
 ne certifie pas la conformité. Chaque candidat est donc explicitement

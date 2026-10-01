@@ -3,7 +3,7 @@
 ## Mission
 
 Trier **un candidat** ouvert par le détecteur automatique (`ocots-lint
-synchroniser`, ou l'ancien `checkers/conventions.sh`, issue `[conventions]
+synchroniser`, issue `[conventions]
 <fichier>`, label `conventions-candidate`) : décider, trouvaille par
 trouvaille, si c'est une vraie infraction aux conventions (`ocots-conventions`)
 ou un faux positif — et repérer, en lisant le fichier de toute façon, ce que
