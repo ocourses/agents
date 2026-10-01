@@ -52,14 +52,22 @@ verdict, c'est toi.
    `OCOTS_LINT="…" conventions/bin/ocots-lint extraire …`. Si la commande
    échoue ou si `avertissements` n'est pas vide, note-le en tête du rapport.
 2. **Lire les règles** P1, P3, P4, P5 et P7 dans `conventions/poly.md`.
-3. **Juger chaque boîte** de `boites`, dans l'ordre :
-   - **P3** sur `amorce` (avec `precede_par` : une boîte qui en suit une autre
-     sans texte relève de P2, outillée — écris « — ») ;
-   - **P4** sur `reprise` et `suivi_par`, après l'unité énoncé-preuve
-     (`preuve`) ; une boîte suivie d'un titre de section sans reprise est le
-     cas typique à examiner, pas une faute automatique (P4 le dit) ;
-   - **P1** pour un résultat dont `citations.ailleurs` est vrai : relis son
-     corps (`ligne`…`fin`) — se suffit-il à lui-même ? Sinon « — ».
+3. **Juger chaque boîte** de `boites`, dans l'ordre. Le champ `famille`
+   décide des règles qui s'appliquent :
+   - **P3**, toute boîte, sur `amorce`. Si `amorce` est vide (la boîte en
+     suit une autre sans texte), c'est P2, outillée : écris « — », jamais ✅ ;
+   - **P4**, famille `resultat` seulement, sur `reprise` et `suivi_par`,
+     après l'unité énoncé-preuve (`preuve`). Un exemple, une définition, une
+     remarque, un exercice : « — ». Un exemple qui suit un résultat *est*
+     son exploitation (P4, forme « exemple ») ; une section qui finit sur un
+     exemple n'est pas un point P4. Le signal « section finie sur une
+     boîte » ne porte que sur une boîte `resultat` sans reprise, et ce n'est
+     pas une faute automatique (P4 le dit) ;
+   - **P1**, famille `resultat` seulement, si `citations.ailleurs` est vrai :
+     relis son corps (`ligne`…`fin`) — se suffit-il à lui-même, hypothèses
+     *et* notations ? Un objet nommé dans l'énoncé mais défini seulement
+     dans le texte qui précède est un point.
+     Sinon « — ».
 4. **Juger chaque section** de `sections` pour **P7** : `ouverture` (texte,
    introduction de chapitre dans `structure`, `minitoc`), `contenu`,
    `hypotheses`.
@@ -79,8 +87,8 @@ Le rapport va dans le fichier de suivi, section `## Bilan` :
    ✅ conforme · ⚠️ n renvoie au point n ci-dessous · — sans objet.
 2. **Sections** — un tableau, une ligne par section : niveau, titre, P7
    (✅, ⚠️ n, ou —).
-3. **Points à revoir**, numérotés : règle · `fichier:ligne` · empreinte de la
-   boîte · **constat** (citer le passage, court) · **proposition** (la phrase à
+3. **Points à revoir**, numérotés comme les ⚠️ n des tableaux : règle ·
+   `fichier:ligne` · empreinte de la boîte (champ `empreinte`, obligatoire) · **constat** (citer le passage, court) · **proposition** (la phrase à
    ajouter ou à réécrire, concrète, sans toucher au fond) · niveau.
 4. **Synthèse** : nombre de boîtes et de sections relues, de points par règle
    et par niveau ; ce qui a été difficile à juger, et pourquoi.
