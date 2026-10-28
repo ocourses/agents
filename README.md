@@ -556,6 +556,7 @@ l'utilise à chaque tick, il ne le remplace pas.
 | `conventions-reviewer` | trie un candidat `conventions-candidate` (sortie brute d'`ocots-lint`) : confirme, rejette (exemption posée par `ocots-lint exempter`) ou complète — jamais de réécriture du contenu |
 | `conventions-fixer` | corrige les points **confirmés** d'une issue `conventions-style`, remède documenté par `ocots-conventions` — ne tranche pas un choix d'auteur (ex. C2) |
 | `judgment-reviewer` | relit un chapitre de polycopié pour les règles de jugement (P1, P3, P4, P7) à partir d'`ocots-lint extraire` : rapport boîte par boîte et section par section, propositions concrètes — aucune écriture dans le cours |
+| `td-exam-reviewer` | relit un TD ou un sujet d'examen pour les règles de jugement (TD4–TD6, EX1, EX2, EX4–EX6) à partir d'`ocots-lint extraire --exercices` : rapport exercice par exercice et document par document, propositions concrètes — aucune écriture dans le cours |
 
 ## Ajouter un rôle
 
