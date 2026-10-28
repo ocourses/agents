@@ -59,8 +59,10 @@ consignes et les parties — **sans verdict** : le verdict, c'est toi.
    encore relayée par les conventions), préfixe-la :
    `OCOTS_LINT="…" conventions/bin/ocots-lint extraire --exercices …`. Si la
    commande échoue ou si `avertissements` n'est pas vide, note-le en tête du
-   rapport. Un exercice dont `corrections` (de l'exercice) ou `hors_exercice`
-   n'est pas vide est déjà signalé par TD8 : ne le juge pas.
+   rapport. Les corrigés de `hors_exercice` sont déjà signalés par TD8 : ne
+   les juge pas. En revanche, un exercice **sans question** place son corrigé
+   à l'exercice (`corrections` de l'exercice, `place: exercice`) : TD8 le
+   permet, juge-le comme les autres.
 2. **Lire les règles** dans `conventions/td.md` et `conventions/exam.md`. Le
    champ `support` d'un exercice (`td` ou `exam`) décide des règles :
    - **TD4**, `td` : `intro` et `enonce` de chaque question. L'exercice a-t-il
